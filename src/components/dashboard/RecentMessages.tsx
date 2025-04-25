@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AlertCircle, Clock, Search } from 'lucide-react';
 import { SMSMessage } from '../../types';
 import StatusBadge from '../ui/StatusBadge';
 
@@ -9,6 +9,34 @@ interface RecentMessagesProps {
 }
 
 const RecentMessages: React.FC<RecentMessagesProps> = ({ messages }) => {
+  // 状態に応じたアクションボタンを表示
+  const renderActionButton = (message: SMSMessage) => {
+    switch (message.status) {
+      case 'pending':
+      case 'queued':
+      case 'processing':
+        return (
+          <button className="text-warning-600 hover:text-warning-800">
+            <Clock className="h-4 w-4" />
+          </button>
+        );
+      case 'failed':
+      case 'rejected':
+      case 'expired':
+        return (
+          <button className="text-error-600 hover:text-error-800">
+            <AlertCircle className="h-4 w-4" />
+          </button>
+        );
+      default:
+        return (
+          <button className="text-primary-600 hover:text-primary-800">
+            <Search className="h-4 w-4" />
+          </button>
+        );
+    }
+  };
+
   return (
     <div className="card mt-5">
       <div className="flex items-center justify-between mb-4">
@@ -38,6 +66,9 @@ const RecentMessages: React.FC<RecentMessagesProps> = ({ messages }) => {
               <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
                 ステータス
               </th>
+              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                操作
+              </th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-grey-200">
@@ -59,6 +90,9 @@ const RecentMessages: React.FC<RecentMessagesProps> = ({ messages }) => {
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <StatusBadge status={message.status} />
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap text-sm text-grey-500">
+                  {renderActionButton(message)}
                 </td>
               </tr>
             ))}

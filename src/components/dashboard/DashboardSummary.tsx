@@ -1,7 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { 
-  TrendingUp, TrendingDown, FileCheck, AlertTriangle, Clock
+  SendHorizonal, Clock, Calendar, Activity, Signal
 } from 'lucide-react';
 import { DashboardStats } from '../../types';
 
@@ -10,41 +10,71 @@ interface DashboardSummaryProps {
 }
 
 const DashboardSummary: React.FC<DashboardSummaryProps> = ({ stats }) => {
+  // システム状態に応じたアイコン色を取得
+  const getSystemStatusColor = () => {
+    switch(stats.systemStatus) {
+      case 'normal': return 'text-success-500';
+      case 'maintenance': return 'text-warning-500';
+      case 'degraded': return 'text-warning-500';
+      case 'outage': return 'text-error-500';
+      default: return 'text-grey-500';
+    }
+  };
+
+  // システム状態に応じたカード背景色を取得
+  const getSystemStatusBgColor = () => {
+    switch(stats.systemStatus) {
+      case 'normal': return 'bg-success-50 text-success-700 ring-success-600/20';
+      case 'maintenance': return 'bg-warning-50 text-warning-700 ring-warning-600/20';
+      case 'degraded': return 'bg-warning-50 text-warning-700 ring-warning-600/20';
+      case 'outage': return 'bg-error-50 text-error-700 ring-error-600/20';
+      default: return 'bg-grey-50 text-grey-700 ring-grey-600/20';
+    }
+  };
+
   const summaryItems = [
     {
-      id: 'today',
-      title: '本日の送信数',
-      value: stats.totalSentToday.toLocaleString(),
-      icon: <FileCheck className="h-8 w-8 text-success-500" />,
-      color: 'bg-success-50 text-success-700 ring-success-600/20',
-    },
-    {
-      id: 'month',
-      title: '今月の送信数',
-      value: stats.totalSentThisMonth.toLocaleString(),
-      icon: <TrendingUp className="h-8 w-8 text-primary-500" />,
+      key: 'sending',
+      title: '送信中メッセージ',
+      value: stats.activeSending.toLocaleString(),
+      icon: <SendHorizonal className="h-8 w-8 text-primary-500" />,
       color: 'bg-primary-50 text-primary-700 ring-primary-600/20',
     },
     {
-      id: 'delivery',
-      title: '本日の配信成功率',
-      value: `${stats.deliveryRateToday}%`,
-      icon: <TrendingUp className="h-8 w-8 text-success-500" />,
+      key: 'waiting',
+      title: '送信待ちメッセージ',
+      value: stats.waitingToSend.toLocaleString(),
+      icon: <Clock className="h-8 w-8 text-warning-500" />,
+      color: 'bg-warning-50 text-warning-700 ring-warning-600/20',
+    },
+    {
+      key: 'scheduled',
+      title: '予約送信',
+      value: stats.scheduledMessages.toString(),
+      icon: <Calendar className="h-8 w-8 text-info-500" />,
+      color: 'bg-info-50 text-info-700 ring-info-600/20',
+    },
+    {
+      key: 'rate',
+      title: '現在の送信速度',
+      value: `${stats.messageSendRate.toLocaleString()}件/分`,
+      icon: <Activity className="h-8 w-8 text-success-500" />,
       color: 'bg-success-50 text-success-700 ring-success-600/20',
     },
     {
-      id: 'failure',
-      title: '本日の配信失敗率',
-      icon: <TrendingDown className="h-8 w-8 text-error-500" />,
-      value: `${stats.failureRateToday}%`,
-      color: 'bg-error-50 text-error-700 ring-error-600/20',
-    },
-    {
-      id: 'pending',
-      title: '処理待ちのジョブ',
-      value: stats.pendingJobs.toString(),
-      icon: <Clock className="h-8 w-8 text-warning-500" />,
-      color: 'bg-warning-50 text-warning-700 ring-warning-600/20',
+      key: 'system',
+      title: 'システム状態',
+      value: (() => {
+        switch(stats.systemStatus) {
+          case 'normal': return '正常';
+          case 'maintenance': return 'メンテナンス中';
+          case 'degraded': return '一部機能低下';
+          case 'outage': return '障害発生中';
+          default: return '不明';
+        }
+      })(),
+      icon: <Signal className={`h-8 w-8 ${getSystemStatusColor()}`} />,
+      color: getSystemStatusBgColor(),
     },
   ];
 
@@ -72,11 +102,11 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ stats }) => {
       initial="hidden"
       animate="show"
     >
-      {summaryItems.map((item, index) => (
+      {summaryItems.map((item) => (
         <motion.div
-          key={item.id}
+          key={item.key}
           className="card overflow-hidden"
-          variants={item}
+          variants={item as any}
           transition={{ duration: 0.3 }}
         >
           <div className="flex items-center">
@@ -84,7 +114,7 @@ const DashboardSummary: React.FC<DashboardSummaryProps> = ({ stats }) => {
               {item.icon}
             </div>
             <div className="ml-5 w-0 flex-1">
-              <dt className="text-sm font-medium text-grey-500 truncate">
+              <dt className="text-sm font-medium text-grey-500 break-words whitespace-normal min-h-[40px] flex items-center">
                 {item.title}
               </dt>
               <dd className="flex items-baseline">

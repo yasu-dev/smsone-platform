@@ -1,11 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { Tab } from '@headlessui/react';
 import IndividualSendForm from '../components/sms/IndividualSendForm';
 import BulkSendForm from '../components/sms/BulkSendForm';
+import useAuthStore from '../store/authStore';
+
+const LoadingFallback = () => (
+  <div className="py-4">
+    <div className="flex justify-center">
+      <div className="w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+    </div>
+    <p className="text-center mt-2 text-grey-600">読み込み中...</p>
+  </div>
+);
 
 const SendSMS: React.FC = () => {
   const [activeTab, setActiveTab] = useState(0);
+  const hasPermission = useAuthStore(state => state.hasPermission);
+  // bulkSendingの権限がなくても一括送信画面を表示できるようにする
+  const canUseBulkSending = true; // 常にtrueにして表示するように変更
   
   return (
     <motion.div
@@ -46,10 +59,14 @@ const SendSMS: React.FC = () => {
         </Tab.List>
         <Tab.Panels>
           <Tab.Panel>
-            <IndividualSendForm />
+            <Suspense fallback={<LoadingFallback />}>
+              <IndividualSendForm />
+            </Suspense>
           </Tab.Panel>
           <Tab.Panel>
-            <BulkSendForm />
+            <Suspense fallback={<LoadingFallback />}>
+              <BulkSendForm />
+            </Suspense>
           </Tab.Panel>
         </Tab.Panels>
       </Tab.Group>
@@ -57,4 +74,4 @@ const SendSMS: React.FC = () => {
   );
 };
 
-export default SendSMS;
+export default SendSMS; 

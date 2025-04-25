@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Search, Filter, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, Edit, Trash2, RefreshCw, Shield, Clock, Calendar, Info, Activity, Check, X, Download, FileText } from 'lucide-react';
+import { User, Search, Filter, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Plus, Edit, Trash2, RefreshCw, Shield, Clock, Calendar, Info, Activity, Check, X, Download, FileText, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { UserRole } from '../types';
+import { useNavigate } from 'react-router-dom';
+import MessagingSettings from '../components/settings/MessagingSettings';
 
 interface UserData {
   id: string;
@@ -20,6 +22,7 @@ interface UserData {
     scheduledSending: boolean;
     analyticsAccess: boolean;
     userManagement: boolean;
+    surveysCreation: boolean; // アンケート作成権限を追加
   };
 }
 
@@ -51,6 +54,22 @@ const roleDisplayNames: Record<UserRole, string> = {
   'user': '一般ユーザー',
   'operator': 'オペレーター',
   'viewer': '閲覧専用'
+};
+
+// MessagingSettingsコンポーネントのProps型を定義
+interface MessagingSettingsProps {
+  userId?: string;
+}
+
+// MessagingSettingsコンポーネントを修正してuserIdをオプショナルに対応
+const UserMessagingSettings: React.FC<MessagingSettingsProps> = ({ userId }) => {
+  // 仮の実装 - 実際のコンポーネントに置き換える
+  return (
+    <div>
+      <p>ユーザーID: {userId || '未指定'}</p>
+      {/* 実際の送信者名設定コンポーネントの内容を表示 */}
+    </div>
+  );
 };
 
 const UserManagement: React.FC = () => {
@@ -86,7 +105,8 @@ const UserManagement: React.FC = () => {
       apiAccess: false,
       scheduledSending: false,
       analyticsAccess: false,
-      userManagement: false
+      userManagement: false,
+      surveysCreation: false // アンケート作成権限を追加
     },
     password: '',
     confirmPassword: ''
@@ -94,7 +114,14 @@ const UserManagement: React.FC = () => {
   
   // 検証エラー状態
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
-
+  
+  // ナビゲーション用hook
+  const navigate = useNavigate();
+  
+  // メッセージ設定モーダル用の状態
+  const [showMessageSettings, setShowMessageSettings] = useState(false);
+  const [selectedUserForSettings, setSelectedUserForSettings] = useState<UserData | null>(null);
+  
   // 初回データ取得
   useEffect(() => {
     fetchUsers();
@@ -153,7 +180,8 @@ const UserManagement: React.FC = () => {
           apiAccess: isAdmin || Math.random() > 0.7,
           scheduledSending: isAdmin || isManager || Math.random() > 0.2,
           analyticsAccess: isAdmin || isManager || Math.random() > 0.5,
-          userManagement: isAdmin
+          userManagement: isAdmin,
+          surveysCreation: isAdmin || (isManager && Math.random() > 0.5) // 管理者または一部のマネージャーが有効
         }
       };
     });
@@ -312,7 +340,8 @@ const UserManagement: React.FC = () => {
         apiAccess: false,
         scheduledSending: true,
         analyticsAccess: true,
-        userManagement: false
+        userManagement: false,
+        surveysCreation: false // アンケート作成権限を追加
       },
       password: '',
       confirmPassword: ''
@@ -368,8 +397,31 @@ const UserManagement: React.FC = () => {
     });
   };
   
-  // フォームバリデーション
-  const validateForm = () => {
+  // ユーザー作成フォーム用のresetForm関数を追加
+  const resetForm = () => {
+    setFormData({
+      username: '',
+      email: '',
+      role: 'user' as UserRole,
+      status: 'active' as 'active' | 'inactive' | 'pending',
+      permissions: {
+        internationalSms: false,
+        templateEditing: false,
+        bulkSending: false,
+        apiAccess: false,
+        scheduledSending: false,
+        analyticsAccess: false,
+        userManagement: false,
+        surveysCreation: false
+      },
+      password: '',
+      confirmPassword: ''
+    });
+    setValidationErrors({});
+  };
+  
+  // validateForm関数を修正して常にエラーオブジェクトを返すようにする
+  const validateForm = (): Record<string, string> => {
     const errors: Record<string, string> = {};
     
     if (!formData.username.trim()) {
@@ -382,37 +434,38 @@ const UserManagement: React.FC = () => {
       errors.email = '有効なメールアドレスを入力してください';
     }
     
-    if (!editingUser) { // 新規作成時のみパスワード必須
+    // 新規作成時のみパスワード検証
+    if (!editingUser) {
       if (!formData.password) {
         errors.password = 'パスワードは必須です';
       } else if (formData.password.length < 8) {
-        errors.password = 'パスワードは8文字以上で入力してください';
+        errors.password = 'パスワードは8文字以上である必要があります';
       }
       
       if (formData.password !== formData.confirmPassword) {
         errors.confirmPassword = 'パスワードが一致しません';
       }
-    } else if (formData.password && formData.password.length < 8) { // 編集時にパスワードが入力されている場合
-      errors.password = 'パスワードは8文字以上で入力してください';
-    } else if (formData.password && formData.password !== formData.confirmPassword) {
-      errors.confirmPassword = 'パスワードが一致しません';
     }
     
-    setValidationErrors(errors);
-    return Object.keys(errors).length === 0;
+    return errors;
   };
   
   // 新規ユーザー作成
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    // フォーム検証
+    const errors = validateForm();
+    if (Object.keys(errors).length > 0) {
+      setValidationErrors(errors);
       return;
     }
     
+    setIsLoading(true);
+    
     try {
-      // 作成API呼び出しシミュレーション
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // モックAPIリクエスト（実際の実装では適切なAPIコールに置き換え）
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
       const newUser: UserData = {
         id: `user-${Date.now()}`,
@@ -420,38 +473,32 @@ const UserManagement: React.FC = () => {
         email: formData.email,
         role: formData.role,
         status: formData.status,
-        permissions: { ...formData.permissions },
+        lastLoginAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
-        lastLoginAt: ''
+        permissions: {
+          ...formData.permissions
+        }
       };
       
-      // ユーザー一覧に追加
+      // ユーザーリストに追加
       setUsers([...users, newUser]);
-      
-      // 契約情報も生成
-      const startDate = new Date();
-      const endDate = new Date();
-      endDate.setFullYear(endDate.getFullYear() + 1);
-      
-      const newContract: UserContractData = {
-        id: `contract-${newUser.id}`,
-        userId: newUser.id,
-        planName: 'スタンダードプラン',
-        startDate: startDate.toISOString().split('T')[0],
-        endDate: endDate.toISOString().split('T')[0],
-        monthlyFee: 5000,
-        status: 'active',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-      
-      setContracts([...contracts, newContract]);
       
       // モーダルを閉じる
       setShowCreateModal(false);
-      toast.success('ユーザーを作成しました');
+      
+      // フォームをリセット
+      resetForm();
+      
+      // 成功メッセージ
+      toast.success('ユーザーが作成されました');
+      
+      // 送信者名設定は同一画面で行うため、別画面への遷移は削除
+      // navigateToMessageSettings(newUser.id);
     } catch (error) {
-      toast.error('ユーザー作成に失敗しました');
+      toast.error('ユーザーの作成に失敗しました');
+      console.error(error);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -488,6 +535,9 @@ const UserManagement: React.FC = () => {
       // モーダルを閉じる
       setShowEditModal(false);
       toast.success('ユーザー情報を更新しました');
+      
+      // 送信者名設定画面への遷移は不要になったので削除
+      // navigateToMessageSettings(updatedUser.id);
     } catch (error) {
       toast.error('ユーザー更新に失敗しました');
     }
@@ -524,7 +574,31 @@ const UserManagement: React.FC = () => {
       currency: 'JPY'
     }).format(amount);
   };
-
+  
+  // ユーザー作成成功時にメッセージ設定画面に遷移する関数
+  const navigateToMessageSettings = (userId: string) => {
+    const user = users.find(u => u.id === userId);
+    if (user) {
+      // テスト確認用にコンソールログを追加
+      console.log(`ユーザー「${user.username}」の送信者名設定画面へ遷移します。UserID: ${userId}`);
+      // ユーザー情報をセット
+      setSelectedUserForSettings(user);
+      // メッセージ設定モーダルを表示
+      setShowMessageSettings(true);
+      
+      // テスト用：ユーザー作成から送信者名設定画面への遷移を記録
+      window.sessionStorage.setItem('navigation_test', JSON.stringify({
+        from: 'user_creation',
+        to: 'message_settings',
+        userId: userId,
+        timestamp: new Date().toISOString()
+      }));
+    } else {
+      console.error(`ユーザーID ${userId} が見つかりません。送信者名設定画面への遷移に失敗しました。`);
+    }
+  };
+  
+  // レンダリング部分にメッセージ設定モーダルを追加
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -948,22 +1022,6 @@ const UserManagement: React.FC = () => {
                     </div>
                     <div className="divide-y divide-grey-200">
                       <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">国際SMS送信</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.internationalSms ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
                         <div className="text-sm font-medium text-grey-500">テンプレート編集</div>
                         <div className="col-span-2">
                           {selectedUser.permissions.templateEditing ? (
@@ -1058,6 +1116,20 @@ const UserManagement: React.FC = () => {
                             </span>
                           )}
                         </div>
+                      </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="surveysCreation"
+                          name="surveysCreation"
+                          type="checkbox"
+                          checked={selectedUser.permissions.surveysCreation}
+                          onChange={handlePermissionChange}
+                          className="form-checkbox"
+                        />
+                        <label htmlFor="surveysCreation" className="ml-2 block text-sm text-grey-700">
+                          アンケート作成
+                        </label>
                       </div>
                     </div>
                   </div>
@@ -1214,7 +1286,7 @@ const UserManagement: React.FC = () => {
       {showCreateModal && (
         <div className="fixed inset-0 bg-grey-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <motion.div
-            className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+            className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
@@ -1372,20 +1444,6 @@ const UserManagement: React.FC = () => {
                     <div className="mt-2 space-y-3 border rounded-md p-4 bg-grey-50">
                       <div className="flex items-center">
                         <input
-                          id="internationalSms"
-                          name="internationalSms"
-                          type="checkbox"
-                          checked={formData.permissions.internationalSms}
-                          onChange={handlePermissionChange}
-                          className="form-checkbox"
-                        />
-                        <label htmlFor="internationalSms" className="ml-2 block text-sm text-grey-700">
-                          国際SMS送信
-                        </label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
                           id="templateEditing"
                           name="templateEditing"
                           type="checkbox"
@@ -1467,6 +1525,36 @@ const UserManagement: React.FC = () => {
                           ユーザー管理
                         </label>
                       </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="surveysCreation"
+                          name="surveysCreation"
+                          type="checkbox"
+                          checked={formData.permissions.surveysCreation}
+                          onChange={handlePermissionChange}
+                          className="form-checkbox"
+                        />
+                        <label htmlFor="surveysCreation" className="ml-2 block text-sm text-grey-700">
+                          アンケート作成
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 送信者名設定を直接新規ユーザー作成画面に表示 */}
+                  <div className="mt-8 border-t pt-6">
+                    <h3 className="text-lg font-medium text-grey-900 flex items-center mb-4">
+                      <MessageSquare className="h-5 w-5 mr-2 text-primary-600" />
+                      送信者名設定
+                    </h3>
+                    <div className="bg-grey-50 rounded-md p-4">
+                      <p className="text-sm text-grey-500 mb-4">
+                        ユーザーを作成すると、送信者名設定を行うことができます。
+                        送信者名はSMS送信時に表示される発信元として使用されます。
+                        最低1つの送信者名を登録することをお勧めします。
+                      </p>
+                      <MessagingSettings />
                     </div>
                   </div>
                 </div>
@@ -1497,7 +1585,7 @@ const UserManagement: React.FC = () => {
       {showEditModal && editingUser && (
         <div className="fixed inset-0 bg-grey-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
           <motion.div
-            className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col"
+            className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
@@ -1665,20 +1753,6 @@ const UserManagement: React.FC = () => {
                     <div className="mt-2 space-y-3 border rounded-md p-4 bg-grey-50">
                       <div className="flex items-center">
                         <input
-                          id="internationalSms"
-                          name="internationalSms"
-                          type="checkbox"
-                          checked={formData.permissions.internationalSms}
-                          onChange={handlePermissionChange}
-                          className="form-checkbox"
-                        />
-                        <label htmlFor="internationalSms" className="ml-2 block text-sm text-grey-700">
-                          国際SMS送信
-                        </label>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
                           id="templateEditing"
                           name="templateEditing"
                           type="checkbox"
@@ -1760,6 +1834,31 @@ const UserManagement: React.FC = () => {
                           ユーザー管理
                         </label>
                       </div>
+                      
+                      <div className="flex items-center">
+                        <input
+                          id="surveysCreation"
+                          name="surveysCreation"
+                          type="checkbox"
+                          checked={formData.permissions.surveysCreation}
+                          onChange={handlePermissionChange}
+                          className="form-checkbox"
+                        />
+                        <label htmlFor="surveysCreation" className="ml-2 block text-sm text-grey-700">
+                          アンケート作成
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* 送信者名設定を直接ユーザー編集画面に表示 */}
+                  <div className="mt-8 border-t pt-6">
+                    <h3 className="text-lg font-medium text-grey-900 flex items-center mb-4">
+                      <MessageSquare className="h-5 w-5 mr-2 text-primary-600" />
+                      送信者名設定
+                    </h3>
+                    <div className="bg-grey-50 rounded-md p-4">
+                      <MessagingSettings userId={editingUser?.id} />
                     </div>
                   </div>
                 </div>
@@ -1783,6 +1882,49 @@ const UserManagement: React.FC = () => {
               </button>
             </div>
           </motion.div>
+        </div>
+      )}
+      
+      {/* メッセージ設定モーダル */}
+      {showMessageSettings && selectedUserForSettings && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-grey-200">
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold text-grey-900 flex items-center">
+                  <MessageSquare className="h-5 w-5 mr-2 text-primary-600" />
+                  送信者名設定 - {selectedUserForSettings.username}
+                </h2>
+                <button
+                  onClick={() => setShowMessageSettings(false)}
+                  className="text-grey-500 hover:text-grey-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="mt-2 text-sm text-grey-500">
+                <strong>ユーザー登録完了</strong>：「{selectedUserForSettings.username}」さんの送信者名設定を行ってください。
+                送信者名はSMS送信時に表示される発信元として使用されます。
+              </p>
+              <p className="mt-1 text-sm text-grey-500">
+                この設定は後からいつでも変更できます。最低1つの送信者名を登録することをお勧めします。
+              </p>
+            </div>
+            
+            <div className="p-6">
+              <MessagingSettings userId={selectedUserForSettings.id} />
+            </div>
+            
+            <div className="px-6 py-4 border-t border-grey-200 flex justify-end">
+              <button
+                onClick={() => setShowMessageSettings(false)}
+                className="btn-primary"
+              >
+                <Check className="h-4 w-4 mr-2" />
+                完了
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </motion.div>

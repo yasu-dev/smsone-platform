@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  Upload, FileText, AlertCircle, FileCheck, Info, Send, 
-  Clock, ShieldCheck, FileSpreadsheet, FileDown, X, Check, Globe 
+  Upload, FileText, AlertCircle, Info, Send, 
+  Clock, ShieldCheck, FileSpreadsheet, FileDown, X, Check, Globe, FileUp, ChevronDown, MessageSquare,
+  ChevronRight, AlertTriangle, Calendar, PhoneOutgoing, FileCheck, Loader2, ArrowLeft, Download, Trash
 } from 'lucide-react';
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
@@ -10,9 +11,14 @@ import toast from 'react-hot-toast';
 import SenderNumberSelect from './SenderNumberSelect';
 import ShortenedUrlInput from './ShortenedUrlInput';
 import PhoneNumberInput from './PhoneNumberInput';
+import SurveyTagInput from './SurveyTagInput';
 import { calculateSMSLength, calculateSMSMessageCount, SMS_CHARACTER_LIMITS, getNextUrlTagIndex } from '../../utils/smsUtils';
 import useSMSStore from '../../store/smsStore';
 import useAuthStore from '../../store/authStore';
+import useSenderNumberStore from '../../store/senderNumberStore';
+import TagHighlighter from '../ui/TagHighlighter';
+import { Button } from '../ui/button';
+import { Table } from '../ui/table';
 
 interface FileRow {
   [key: string]: string;
@@ -21,7 +27,18 @@ interface FileRow {
 type FileFormat = 'csv' | 'excel';
 type FileEncoding = 'shift-jis' | 'utf-8';
 
+// 送信ステップを定義
+enum SendStep {
+  FILE_UPLOAD = 0,
+  CONTENT = 1,
+  OPTIONS = 2,
+  CONFIRM = 3,
+}
+
 const BulkSendForm: React.FC = () => {
+  // 送信ステップの状態
+  const [currentStep, setCurrentStep] = useState<SendStep>(SendStep.FILE_UPLOAD);
+
   const [file, setFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<FileRow[]>([]);
   const [isUploading, setIsUploading] = useState(false);
@@ -34,7 +51,7 @@ const BulkSendForm: React.FC = () => {
   const [senderNumber, setSenderNumber] = useState<string>('');
   const [originalUrl, setOriginalUrl] = useState('');
   const [multipleUrlsEnabled, setMultipleUrlsEnabled] = useState(true);
-  const [isLongSMSEnabled, setIsLongSMSEnabled] = useState(false);
+  const [isLongSMSEnabled, setIsLongSMSEnabled] = useState(true);
   const [fileEncoding, setFileEncoding] = useState<FileEncoding>('shift-jis');
   const [fileFormat, setFileFormat] = useState<FileFormat>('csv');
   const [showDropZone, setShowDropZone] = useState(false);
@@ -45,31 +62,157 @@ const BulkSendForm: React.FC = () => {
   const [isTestMode, setIsTestMode] = useState(false);
   const [hasInternationalNumbers, setHasInternationalNumbers] = useState(false);
   const [urlTagIndex, setUrlTagIndex] = useState(1);
+  const [message, setMessage] = useState('');
+  const [isFileUploaded, setIsFileUploaded] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
   
-  const { sendTestMessage } = useSMSStore();
+  const { sendTestMessage, sendBulkMessages } = useSMSStore();
   const { hasPermission } = useAuthStore();
   
-  // 海外送信権限チェック
-  const canUseInternational = hasPermission('internationalSms');
-
-  // 文字数と通数の計算
-  const characterCount = calculateSMSLength(previewTemplate, { enableLongSMS: isLongSMSEnabled });
-  const messageCount = calculateSMSMessageCount(previewTemplate, { enableLongSMS: isLongSMSEnabled });
+  // 海外送信権限チェックを削除
+  // 一括送信権限チェック - 常にtrueにして表示されるようにする
+  const canUseBulkSending = true;
   
-  // 文字数制限値
-  const characterLimit = isLongSMSEnabled 
-    ? (senderNumber.startsWith('090') ? SMS_CHARACTER_LIMITS.DOCOMO_LONG : SMS_CHARACTER_LIMITS.OTHER_LONG)
-    : SMS_CHARACTER_LIMITS.STANDARD;
+  // 文字数と通数の計算
+  const characterCount = calculateSMSLength(message || previewTemplate, { enableLongSMS: isLongSMSEnabled });
+  const messageCount = calculateSMSMessageCount(message || previewTemplate, { enableLongSMS: isLongSMSEnabled });
+  
+  // 文字数制限値 (660文字に統一)
+  const characterLimit = 660;
+  
+  // 文字数状態に基づいたクラス名
+  const getCharCountClass = (count: number) => {
+    if (count > characterLimit) return 'text-error-600 font-medium';
+    if (count > characterLimit * 0.9) return 'text-warning-600';
+    return '';
+  };
+  
+  // 次のステップに進む関数
+  const goToNextStep = () => {
+    if (currentStep < SendStep.CONFIRM) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  // 前のステップに戻る関数
+  const goToPreviousStep = () => {
+    if (currentStep > SendStep.FILE_UPLOAD) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // 特定のステップに直接ジャンプする関数
+  const goToStep = (step: SendStep) => {
+    setCurrentStep(step);
+  };
+
+  // ファイルアップロードステップのバリデーション
+  const validateFileUploadStep = () => {
+    if (!file || parsedData.length === 0) {
+      toast.error('送信するファイルを選択してください');
+      return false;
+    }
+
+    if (!senderNumber) {
+      toast.error('送信者名を選択してください');
+      return false;
+    }
     
+    return true;
+  };
+
+  // 本文ステップのバリデーション
+  const validateContentStep = () => {
+    if (!previewTemplate) {
+      toast.error('本文を入力してください');
+      return false;
+    }
+    
+    // URLタグパターンを検出
+    const urlTagPattern = /{URL\d*}/;
+    
+    // 本文に{URL}タグがあるのに短縮元URLが設定されていない場合（ファイルの場合は各行に設定されているかチェック）
+    if (urlTagPattern.test(previewTemplate) && !originalUrl) {
+      // 各行にoriginal_url列があるか確認
+      const hasUrlInFile = parsedData.some(row => 
+        ('original_url' in row && row.original_url) || 
+        ('K' in row && row.K)
+      );
+      if (!hasUrlInFile) {
+        toast.error('本文にURLタグがありますが、短縮元URLが設定されていません');
+        return false;
+      }
+    }
+    
+    // 文字数チェック
+    if (characterCount > characterLimit) {
+      toast.error(`文字数制限(${characterLimit}文字)を超えています`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  // オプションステップのバリデーション
+  const validateOptionsStep = () => {
+    // 送信予約が有効で日時が未入力の場合
+    if (isScheduled && (!scheduledDate || !scheduledTime)) {
+      toast.error('予約送信の日時を入力してください');
+      return false;
+    }
+    
+    if (isTestMode && !testRecipient) {
+      toast.error('テスト送信用携帯番号を入力してください');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // 各ステップを検証してから次へ進む
+  const validateAndProceed = () => {
+    let isValid = false;
+    
+    switch (currentStep) {
+      case SendStep.FILE_UPLOAD:
+        isValid = validateFileUploadStep();
+        break;
+      case SendStep.CONTENT:
+        isValid = validateContentStep();
+        break;
+      case SendStep.OPTIONS:
+        isValid = validateOptionsStep();
+        break;
+      default:
+        isValid = true;
+    }
+    
+    if (isValid) {
+      if (currentStep === SendStep.OPTIONS) {
+        // オプションステップから確認ステップへ
+        goToStep(SendStep.CONFIRM);
+      } else {
+        goToNextStep();
+      }
+    }
+  };
+  
   // プレビュー更新時にURLタグインデックスを更新
   useEffect(() => {
     if (previewTemplate) {
       setUrlTagIndex(getNextUrlTagIndex(previewTemplate));
     }
   }, [previewTemplate]);
+
+  // message変更時にプレビュー更新
+  useEffect(() => {
+    if (message) {
+      setPreviewTemplate(message);
+    }
+  }, [message]);
 
   // ドラッグ&ドロップ関連のイベントハンドラ
   useEffect(() => {
@@ -135,8 +278,20 @@ const BulkSendForm: React.FC = () => {
     return internationalPattern.test(phoneNumber);
   };
 
+  // アップロード進捗シミュレーション
+  const startProgressSimulation = () => {
+    return setInterval(() => {
+      setUploadProgress((prev) => {
+        const newProgress = prev + Math.random() * 20;
+        return newProgress >= 100 ? 100 : newProgress;
+      });
+    }, 200) as unknown as number;
+  };
+  
   // ファイル処理（共通部分）
   const handleFile = (selectedFile: File) => {
+    if (!selectedFile) return;
+    
     if (isConfirmMode) {
       setIsConfirmMode(false);
     }
@@ -157,47 +312,34 @@ const BulkSendForm: React.FC = () => {
     setUploadProgress(0);
     
     // アップロード進捗シミュレーション
-    const progressInterval = setInterval(() => {
-      setUploadProgress((prev) => {
-        const newProgress = prev + Math.random() * 20;
-        return newProgress >= 100 ? 100 : newProgress;
-      });
-    }, 200);
+    const progressInterval = startProgressSimulation();
     
-    // ファイル形式に応じた処理
-    if (detectedFormat === 'excel') {
-      parseExcelFile(selectedFile, progressInterval);
-    } else {
-      parseCsvFile(selectedFile, progressInterval);
-    }
-  };
-
-  // CSV形式のパース処理
-  const parseCsvFile = (file: File, progressInterval: number) => {
-    const config = {
-      header: true,
-      skipEmptyLines: true,
-      encoding: fileEncoding,
-      complete: (results: Papa.ParseResult<FileRow>) => {
-        clearInterval(progressInterval);
-        setUploadProgress(100);
-        setIsUploading(false);
-        processFileData(results.data, file.name);
-      },
-      error: (error: any) => {
-        clearInterval(progressInterval);
-        setIsUploading(false);
-        toast.error('ファイルの解析に失敗しました');
-        console.error(error);
-        resetFileUpload();
+    try {
+      // ファイル形式に応じた処理
+      if (detectedFormat === 'excel') {
+        parseExcelFile(selectedFile, progressInterval);
+      } else {
+        parseCsvFile(selectedFile, progressInterval);
       }
-    };
-    
-    Papa.parse(file, config);
+    } catch (error) {
+      clearInterval(progressInterval);
+      setIsUploading(false);
+      toast.error('ファイルの処理中にエラーが発生しました');
+      console.error(error);
+      resetFileUpload();
+    }
   };
 
   // Excel形式のパース処理
   const parseExcelFile = (file: File, progressInterval: number) => {
+    // XLSXがまだロードされていない場合は処理しない
+    if (!XLSX || typeof XLSX.read !== 'function') {
+      clearInterval(progressInterval);
+      setIsUploading(false);
+      toast.error('Excel処理ライブラリの読み込みに失敗しました');
+      return;
+    }
+    
     const reader = new FileReader();
     
     reader.onload = (e) => {
@@ -210,50 +352,93 @@ const BulkSendForm: React.FC = () => {
         const worksheet = workbook.Sheets[sheetName];
         
         // シートからJSONデータに変換
-        const jsonData = XLSX.utils.sheet_to_json<FileRow>(worksheet, { 
+        const rawData = XLSX.utils.sheet_to_json<FileRow>(worksheet, { 
           header: 'A',
           blankrows: false
         });
+
+        // ヘッダー行（1行目）を取得
+        const headerRow = rawData[0];
         
-        // CSVと同じ形式に変換（キーをA、B、CからCSVの列名に変換）
-        const processedData = jsonData.map(row => {
-          const newRow: FileRow = {};
+        // ヘッダー行から項目名と列のマッピングを作成
+        const headerMapping: Record<string, string> = {};
+        
+        // 標準項目名のリスト
+        const standardFields = {
+          tel: ['tel', 'phone', 'telephone', '電話番号', '電話', 'tel_no', 'telno'],
+          customerName: ['customer', 'customername', 'name', 'customer_name', '顧客名', '名前', 'お客様名'],
+          orderNumber: ['order', 'ordernumber', 'order_number', '注文番号', 'オーダー番号'],
+          appointmentDate: ['appointment', 'appointmentdate', 'date', 'appointment_date', '予約日', '日付'],
+          companyName: ['company', 'companyname', 'company_name', '会社名', '企業名'],
+          memo: ['memo', 'note', 'comment', 'メモ', '備考'],
+          templateId: ['template', 'templateid', 'template_id', 'テンプレート', 'テンプレートID'],
+          message: ['message', 'content', 'text', 'メッセージ', '本文', 'メール本文', 'sms本文', 'smsメッセージ'],
+          original_url: ['url', 'link', 'original_url', 'originalurl', 'リンク', 'URL'],
+          send_datetime: ['senddate', 'senddatetime', 'send_date', 'send_datetime', '送信日時', '配信日時'],
+          skip: ['skip', 'exclude', 'スキップ', '除外']
+        };
+        
+        // 特定の列（B: 顧客名、J: メッセージなど）を明示的にマッピング
+        if (rawData.length > 0) {
+          // ヘッダー行のテキストに基づいてマッピング
+          Object.keys(headerRow).forEach(column => {
+            const headerValue = headerRow[column]?.toString().trim().toLowerCase();
+            if (!headerValue) return;
+            
+            // 標準フィールドとマッチするか確認
+            let mapped = false;
+            Object.entries(standardFields).forEach(([field, aliases]) => {
+              if (aliases.includes(headerValue)) {
+                headerMapping[column] = field;
+                mapped = true;
+              }
+            });
+            
+            // マッピングされなかった場合はそのままの列名を使用
+            if (!mapped) {
+              headerMapping[column] = headerValue;
+            }
+          });
+        }
+        
+        // 実際のデータをヘッダーマッピングに基づいて変換
+        const processedData = rawData.slice(1).map(row => {
+                const newRow: FileRow = {};
           
-          // 最初の行のA列をtelに変換
-          if ('A' in row) newRow['tel'] = row['A'];
+          // 各列をマッピングに従って変換
+          Object.keys(row).forEach(column => {
+            if (headerMapping[column]) {
+              newRow[headerMapping[column]] = row[column];
+                  } else {
+              newRow[column] = row[column];
+            }
+          });
           
-          // B-E列をinfo1-info4に変換
-          if ('B' in row) newRow['info1'] = row['B'];
-          if ('C' in row) newRow['info2'] = row['C'];
-          if ('D' in row) newRow['info3'] = row['D'];
-          if ('E' in row) newRow['info4'] = row['E'];
+          // 元の列データも保持（互換性のため）
+          Object.keys(row).forEach(column => {
+            newRow[column] = row[column];
+          });
           
-          // F列をmemoに変換
-          if ('F' in row) newRow['memo'] = row['F'];
-          
-          // H列をtemplateIdに変換
-          if ('H' in row) newRow['templateId'] = row['H'];
-          
-          // J列をmessageに変換
-          if ('J' in row) newRow['message'] = row['J'];
-          
-          // K列をoriginal_urlに変換
-          if ('K' in row) newRow['original_url'] = row['K'];
-          
-          // Q列をsend_datetimeに変換
-          if ('Q' in row) newRow['send_datetime'] = row['Q'];
-          
-          // BZ列をskipに変換
-          if ('BZ' in row) newRow['skip'] = row['BZ'];
-          
-          return newRow;
+                return newRow;
+              });
+        
+        // ヘッダー行も変換して保持
+        const convertedHeaderRow: FileRow = {};
+        Object.keys(headerRow).forEach(column => {
+          convertedHeaderRow[column] = headerRow[column];
+          if (headerMapping[column]) {
+            convertedHeaderRow[headerMapping[column]] = headerRow[column];
+          }
         });
         
-        clearInterval(progressInterval);
-        setUploadProgress(100);
-        setIsUploading(false);
+        // ヘッダー行を追加したデータを作成
+        const finalData = [convertedHeaderRow, ...processedData];
         
-        processFileData(processedData, file.name);
+            clearInterval(progressInterval);
+        setUploadProgress(100);
+            setIsUploading(false);
+        
+        processFileData(finalData, file.name);
       } catch (error) {
         clearInterval(progressInterval);
         setIsUploading(false);
@@ -273,66 +458,244 @@ const BulkSendForm: React.FC = () => {
     reader.readAsBinaryString(file);
   };
 
+  // CSV形式のパース処理
+  const parseCsvFile = (file: File, progressInterval: number) => {
+    // Papaがまだロードされていない場合は処理しない
+    if (!Papa || typeof Papa.parse !== 'function') {
+      clearInterval(progressInterval);
+      setIsUploading(false);
+      toast.error('CSV処理ライブラリの読み込みに失敗しました');
+      return;
+    }
+    
+    const reader = new FileReader();
+    
+    reader.onload = (e) => {
+      try {
+        const content = e.target?.result;
+        
+        const config = {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results: any) => {
+            clearInterval(progressInterval);
+            setUploadProgress(100);
+            setIsUploading(false);
+            
+            // ヘッダー行（1行目）を取得
+            const headerRow = results.meta.fields.reduce((acc: Record<string, string>, field: string) => {
+              acc[field] = field;
+              return acc;
+            }, {});
+            
+            // 標準項目名のリスト
+            const standardFields = {
+              'tel': ['tel', '電話番号', 'phone', '宛先'],
+              'customerName': ['customerName', '顧客名', 'name', '名前', 'お名前', 'customer'],
+              'message': ['message', 'メッセージ', 'msg', 'text'],
+              'orderNumber': ['orderNumber', '注文番号', 'order', '注文'],
+              'appointmentDate': ['appointmentDate', '予約日', 'date', '日付'],
+              'companyName': ['companyName', '会社名', 'company'],
+              'memo': ['memo', 'メモ', 'note'],
+              'original_url': ['original_url', 'url', 'URL', '短縮URL', '短縮元URL']
+            };
+            
+            // ヘッダーマッピングを作成
+            const headerMapping: Record<string, string> = {};
+            results.meta.fields.forEach((field: string) => {
+              const headerValue = field.trim().toLowerCase();
+              
+              // 標準フィールドとマッチするか確認
+              Object.entries(standardFields).forEach(([standardField, aliases]) => {
+                if (aliases.includes(headerValue)) {
+                  headerMapping[field] = standardField;
+                }
+              });
+              
+              // マッピングされなかった場合はそのままの列名を使用
+              if (!headerMapping[field]) {
+                headerMapping[field] = field;
+              }
+            });
+            
+            // データを変換
+            const processedData = results.data.map((row: any) => {
+              const newRow: FileRow = {};
+              
+              // 各列をマッピングに従って変換
+              Object.keys(row).forEach(column => {
+                if (headerMapping[column]) {
+                  newRow[headerMapping[column]] = row[column];
+                }
+                
+                // 元の列データも保持（互換性のため）
+                newRow[column] = row[column];
+              });
+          
+          return newRow;
+        });
+        
+            // ヘッダー行も変換して保持
+            const convertedHeaderRow: FileRow = { ...headerRow };
+            Object.keys(headerRow).forEach(column => {
+              if (headerMapping[column]) {
+                convertedHeaderRow[headerMapping[column]] = headerRow[column];
+              }
+            });
+            
+            // ヘッダー行を追加したデータを作成
+            const finalData = [convertedHeaderRow, ...processedData];
+            
+            processFileData(finalData, file.name);
+          },
+          error: (error: any) => {
+        clearInterval(progressInterval);
+        setIsUploading(false);
+            toast.error('ファイルの解析に失敗しました');
+            console.error(error);
+            resetFileUpload();
+          }
+        };
+        
+        Papa.parse(content as string, config);
+      } catch (error) {
+        clearInterval(progressInterval);
+        setIsUploading(false);
+        toast.error('CSVファイルの解析に失敗しました');
+        console.error(error);
+        resetFileUpload();
+      }
+    };
+    
+    reader.onerror = () => {
+      clearInterval(progressInterval);
+      setIsUploading(false);
+      toast.error('ファイルの読み込みに失敗しました');
+      resetFileUpload();
+    };
+    
+    if (fileEncoding === 'utf-8') {
+      reader.readAsText(file, 'utf-8');
+    } else {
+      // Shift-JISの場合
+      reader.readAsText(file, 'shift-jis');
+    }
+  };
+
   // ファイルデータの処理（共通部分）
   const processFileData = (data: FileRow[], fileName: string) => {
-    // 最初の行のデータを確認
-    const firstRow = data[0];
-    
-    if (!firstRow) {
+    // データが存在しない場合
+    if (data.length === 0) {
       toast.error('ファイルにデータが含まれていません');
+      resetFileUpload();
+      return;
+    }
+
+    // 1行目をヘッダー行として扱い、送信データから除外
+    const headerRow = data[0];
+    const dataRows = data.slice(1);
+    
+    // データがヘッダー行のみの場合
+    if (dataRows.length === 0) {
+      toast.error('ファイルに送信データが含まれていません（ヘッダー行のみ）');
       resetFileUpload();
       return;
     }
     
     // 最大レコード数チェック
-    if (data.length > 500000) {
+    if (dataRows.length > 500000) {
       toast.error('ファイルに含まれるレコード数が多すぎます（最大50万レコード）');
       resetFileUpload();
       return;
     }
     
-    // 必須項目（電話番号）のチェック
-    if (!('tel' in firstRow) && !('A' in firstRow)) {
-      toast.error('ファイル形式が正しくありません。宛先電話番号の列が必要です（A列または「tel」列）');
+    // 必須項目（電話番号）のチェック - 項目名で判断
+    const firstDataRow = dataRows[0];
+    const hasTelField = Object.keys(firstDataRow).some(key => 
+      key === 'tel' || 
+      key.toLowerCase() === '電話番号' || 
+      key.toLowerCase() === 'phone' ||
+      key.toLowerCase() === '宛先'
+    );
+    
+    if (!hasTelField) {
+      toast.error('ファイル形式が正しくありません。宛先電話番号の列が必要です（項目名：tel、電話番号、phoneなど）');
+      resetFileUpload();
+      return;
+    }
+    
+    // 実際の電話番号が存在するか確認
+    const hasPhoneNumbers = dataRows.some(row => {
+      return Object.entries(row).some(([key, value]) => {
+        return (key === 'tel' || 
+                key.toLowerCase() === '電話番号' || 
+                key.toLowerCase() === 'phone' ||
+                key.toLowerCase() === '宛先') && value;
+      });
+    });
+    
+    if (!hasPhoneNumbers) {
+      toast.error('ファイルに有効な電話番号が含まれていません');
       resetFileUpload();
       return;
     }
     
     // 国際電話番号の有無をチェック
     let foundInternational = false;
-    if (canUseInternational) {
-      // 各行の電話番号を確認
-      for (const row of data) {
-        const phoneNumber = row.tel || row.A || '';
-        if (isInternationalPhoneNumber(phoneNumber)) {
-          foundInternational = true;
-          break;
-        }
+    // 各行の電話番号を確認
+    for (const row of dataRows) {
+      // 電話番号関連のフィールドを探す
+      const phoneNumber = Object.entries(row)
+        .filter(([key]) => key === 'tel' || 
+                          key.toLowerCase() === '電話番号' || 
+                          key.toLowerCase() === 'phone' ||
+                          key.toLowerCase() === '宛先')
+        .map(([_, value]) => value)
+        .find(Boolean) || '';
+        
+      if (isInternationalPhoneNumber(phoneNumber)) {
+        foundInternational = true;
+        break;
       }
     }
     setHasInternationalNumbers(foundInternational);
     
+    // ヘッダー行を含むすべてのデータをセット（表示用）
     setParsedData(data);
     
-    // プレビュー用のテンプレート生成
-    if (firstRow) {
-      if ('message' in firstRow) {
-        setPreviewTemplate(firstRow.message);
-      } else if ('J' in firstRow) {
-        setPreviewTemplate(firstRow.J);
+    // プレビュー用のテンプレート生成（2行目のデータを参照）
+    if (firstDataRow) {
+      const messageValue = Object.entries(firstDataRow)
+        .filter(([key]) => key === 'message' || 
+                          key.toLowerCase() === 'メッセージ' || 
+                          key.toLowerCase() === 'msg' ||
+                          key.toLowerCase() === 'text')
+        .map(([_, value]) => value)
+        .find(Boolean);
+        
+      if (messageValue) {
+        setPreviewTemplate(messageValue);
+        setMessage(messageValue);
       }
     }
     
-    // 短縮元URLがファイルにある場合
-    if (firstRow) {
-      if ('original_url' in firstRow && firstRow.original_url) {
-        setOriginalUrl(firstRow.original_url);
-      } else if ('K' in firstRow && firstRow.K) {
-        setOriginalUrl(firstRow.K);
+    // 短縮元URLがファイルにある場合（2行目のデータを参照）
+    if (firstDataRow) {
+      const urlValue = Object.entries(firstDataRow)
+        .filter(([key]) => key === 'original_url' || 
+                          key.toLowerCase() === 'url' || 
+                          key.toLowerCase() === 'url' ||
+                          key.toLowerCase() === '短縮url' ||
+                          key.toLowerCase() === '短縮元url')
+        .map(([_, value]) => value)
+        .find(Boolean);
+        
+      if (urlValue) {
+        setOriginalUrl(urlValue);
       }
     }
     
-    toast.success(`${data.length}件のデータを読み込みました${foundInternational ? '（国際電話番号を含む）' : ''}`);
+    toast.success(`${dataRows.length}件のデータを読み込みました${foundInternational ? '（国際電話番号を含む）' : ''}`);
   };
 
   // ファイルアップロードのリセット
@@ -342,6 +705,7 @@ const BulkSendForm: React.FC = () => {
     setPreviewTemplate('');
     if (fileInputRef.current) fileInputRef.current.value = '';
     setHasInternationalNumbers(false);
+    setIsFileUploaded(false);
   };
 
   // 確認モードに移行
@@ -384,12 +748,6 @@ const BulkSendForm: React.FC = () => {
       return false;
     }
     
-    // 国際電話番号の権限チェック
-    if (hasInternationalNumbers && !canUseInternational) {
-      toast.error('このファイルには国際電話番号が含まれていますが、海外送信権限がありません');
-      return false;
-    }
-    
     return true;
   };
 
@@ -409,39 +767,149 @@ const BulkSendForm: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!isConfirmMode) {
-      handleConfirm();
+    // 確認ステップ以外では、次のステップに進む
+    if (currentStep !== SendStep.CONFIRM) {
+      validateAndProceed();
       return;
     }
     
-    if (!validateForm()) return;
+    // 最終確認ステップでの送信処理
+    if (!validateFileUploadStep() || !validateContentStep() || !validateOptionsStep()) {
+      return;
+    }
     
     setIsProcessing(true);
     
     try {
-      if (isTestMode) {
-        // テスト送信処理
+      // 1行目をヘッダー行として扱い、送信対象から除外
+      const dataToSend = parsedData.slice(1);
+      
+      const bulkMessages = dataToSend.map((row, index) => {
+        // skip列が "true" または "1" または "yes" の場合はスキップ
+        const skipValue = Object.entries(row)
+          .filter(([key]) => key === 'skip' || key.toLowerCase() === 'スキップ')
+          .map(([_, value]) => value)
+          .find(value => value === 'true' || value === '1' || value === 'yes');
+          
+        if (skipValue) return null;
+        
+        // 各行から電話番号を取得
+        const phoneNumber = Object.entries(row)
+          .filter(([key]) => key === 'tel' || 
+                            key.toLowerCase() === '電話番号' || 
+                            key.toLowerCase() === 'phone' ||
+                            key.toLowerCase() === '宛先')
+          .map(([_, value]) => value)
+          .find(Boolean) || '';
+        
+        // 電話番号が空の場合はスキップ
+        if (!phoneNumber) return null;
+        
+        // メッセージ内容を取得
+        let messageContent = message || previewTemplate;
+        
+        // メッセージフィールドを探す
+        const rowMessageValue = Object.entries(row)
+          .filter(([key]) => key === 'message' || 
+                            key.toLowerCase() === 'メッセージ' || 
+                            key.toLowerCase() === 'msg' ||
+                            key.toLowerCase() === 'text')
+          .map(([_, value]) => value)
+          .find(Boolean);
+          
+        if (rowMessageValue) {
+          // 行ごとに個別メッセージがある場合はそれを使用
+          messageContent = rowMessageValue;
+        }
+        
+        // メッセージ内のタグを置換
+        Object.keys(row).forEach(key => {
+          const tagPattern = new RegExp(`{${key}}`, 'g');
+          messageContent = messageContent.replace(tagPattern, row[key] || '');
+        });
+        
+        // 特別なタグの置換（顧客名など）
+        const customerNameValue = Object.entries(row)
+          .filter(([key]) => key === 'customerName' || 
+                            key.toLowerCase() === '顧客名' || 
+                            key.toLowerCase() === 'name' ||
+                            key.toLowerCase() === '名前' ||
+                            key.toLowerCase() === 'お名前')
+          .map(([_, value]) => value)
+          .find(Boolean);
+          
+        if (messageContent.includes('{customerName}') && customerNameValue) {
+          messageContent = messageContent.replace(/{customerName}/g, customerNameValue);
+        }
+        
+        // URL置換をプレビュー
+        const urlTagPattern = /{URL\d*}/g;
+        if (urlTagPattern.test(messageContent)) {
+          // URL値を探す
+          const urlValue = Object.entries(row)
+            .filter(([key]) => key === 'original_url' || 
+                              key.toLowerCase() === 'url' || 
+                              key.toLowerCase() === 'url' ||
+                              key.toLowerCase() === '短縮url' ||
+                              key.toLowerCase() === '短縮元url')
+            .map(([_, value]) => value)
+            .find(Boolean) || originalUrl || '';
+          
+          // URLタグを見つけて置換
+          const urlTags = messageContent.match(urlTagPattern) || [];
+          urlTags.forEach(tag => {
+            messageContent = messageContent.replace(tag, urlValue);
+          });
+        }
+        
+        return {
+          recipient: isTestMode ? testRecipient : phoneNumber,
+          content: messageContent,
+          sender: senderNumber,
+          isInternational: isInternational || isInternationalPhoneNumber(phoneNumber)
+        };
+      }).filter(Boolean); // nullをフィルタリング
+      
+      // テスト送信モードの場合
+      if (isTestMode && testRecipient) {
+        // 最初のメッセージのみをテスト送信
+        if (bulkMessages.length > 0) {
+          const testMessage = bulkMessages[0];
+          if (testMessage) {
         await sendTestMessage({
           recipient: testRecipient,
-          content: previewTemplate,
+              content: testMessage.content,
           sender: senderNumber,
-          originalUrl: originalUrl,
+              originalUrl: originalUrl || undefined,
           isInternational,
           countryCode
         });
-        
-        toast.success(`テスト送信を完了しました`);
+            toast.success('テスト送信を完了しました');
+          }
       } else {
-        // 実際のアプリではAPIへの送信を行う
-        await new Promise(resolve => setTimeout(resolve, 2000));
+          toast.error('送信対象のメッセージがありません');
+        }
+      } else {
+        // 実際の一括送信処理
+        // API形式に合わせて一括送信の引数を調整
+        await sendBulkMessages(dataToSend, {
+          sender: senderNumber,
+          messageTemplate: previewTemplate,
+          originalUrl: originalUrl,
+          isScheduled: isScheduled,
+          scheduledDate: scheduledDate,
+          scheduledTime: scheduledTime,
+          isInternational: hasInternationalNumbers
+        });
         
-        toast.success(`${parsedData.length}件のSMS送信を開始しました${hasInternationalNumbers ? '（国際電話番号を含む）' : ''}`);
+        toast.success(`${dataToSend.length}件のSMS送信を開始しました${hasInternationalNumbers ? '（国際電話番号を含む）' : ''}`);
       }
       
-      // フォームリセット
+      // 送信完了後、フォームをリセット
       resetForm();
+      
     } catch (error) {
-      toast.error('送信に失敗しました');
+      toast.error('送信処理中にエラーが発生しました');
       console.error(error);
     } finally {
       setIsProcessing(false);
@@ -462,11 +930,24 @@ const BulkSendForm: React.FC = () => {
     setCountryCode(undefined);
     setHasInternationalNumbers(false);
     setUrlTagIndex(1);
+    setMessage('');
+    setIsFileUploaded(false);
   };
 
-  // 送信元番号変更ハンドラ
+  // 送信者名変更ハンドラ
   const handleSenderNumberChange = (number: string) => {
     setSenderNumber(number);
+    
+    // 送信者名が国際送信対応かチェック
+    const selectedSender = useSenderNumberStore.getState().senderNumbers.find(sn => sn.number === number);
+    if (selectedSender && selectedSender.isInternational) {
+      // 国際送信対応の送信者名が選択された場合、国際送信モードを有効化
+      setIsInternational(true);
+    } else {
+      // 通常の電話番号が選択された場合は国際送信モードを無効化
+      setIsInternational(false);
+      setCountryCode(undefined);
+    }
   };
   
   // 短縮元URL更新ハンドラ
@@ -476,13 +957,13 @@ const BulkSendForm: React.FC = () => {
   
   // タグ挿入ハンドラ
   const handleInsertTag = (tag: string) => {
-    toast.info(`ファイルの本文（message列またはJ列）に${tag}タグを含めてください`);
-    
-    // URLタグを挿入した後、次のタグインデックスを更新
-    if (tag.startsWith('{URL')) {
-      const match = tag.match(/{URL(\d*)}/) || [];
-      const currentIndex = match[1] ? parseInt(match[1], 10) : 1;
-      setUrlTagIndex(currentIndex + 1);
+    try {
+      toast.success(`${tag}を挿入しました`);
+      return true;
+    } catch (error) {
+      console.error(error);
+      toast.error('タグの挿入に失敗しました');
+      return false;
     }
   };
 
@@ -526,12 +1007,62 @@ const BulkSendForm: React.FC = () => {
     show: { y: 0, opacity: 1 }
   };
 
+  // ステップインジケーターを描画する関数
+  const renderStepIndicator = () => {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          {Object.values(SendStep).filter(v => typeof v === 'number').map((step) => (
+            <div 
+              key={step} 
+              className={`flex items-center ${Number(step) < currentStep ? 'cursor-pointer' : ''}`}
+              onClick={() => Number(step) < currentStep && goToStep(step as SendStep)}
+            >
+              <div 
+                className={`flex items-center justify-center w-8 h-8 rounded-full font-medium text-sm
+                  ${currentStep === step 
+                    ? 'bg-primary-600 text-white' 
+                    : Number(step) < currentStep 
+                      ? 'bg-primary-100 text-primary-600 border border-primary-300' 
+                      : 'bg-grey-100 text-grey-500 border border-grey-300'
+                  }`}
+              >
+                {Number(step) + 1}
+              </div>
+              <span 
+                className={`ml-2 text-sm font-medium 
+                  ${currentStep === step 
+                    ? 'text-primary-600' 
+                    : Number(step) < currentStep 
+                      ? 'text-primary-500' 
+                      : 'text-grey-500'
+                  }`}
+              >
+                {step === SendStep.FILE_UPLOAD && 'ファイル'}
+                {step === SendStep.CONTENT && '本文'}
+                {step === SendStep.OPTIONS && 'オプション'}
+                {step === SendStep.CONFIRM && '確認'}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="relative mt-1">
+          <div className="absolute top-0 left-4 right-4 h-1 bg-grey-200"></div>
+          <div 
+            className="absolute top-0 left-4 h-1 bg-primary-500 transition-all duration-300"
+            style={{ width: `${(currentStep / (Object.keys(SendStep).length / 2 - 1)) * 100}%` }}
+          ></div>
+        </div>
+      </div>
+    );
+  };
+
   // サンプルExcelダウンロードハンドラ
   const handleDownloadSample = () => {
     // サンプルデータ
     const sampleData = [
-      { tel: '09012345678', info1: 'サンプル名前', message: 'こんにちは{info1}様、サンプルメッセージです。' },
-      { tel: '08011112222', info1: 'テスト太郎', message: 'こんにちは{info1}様、サンプルメッセージです。' }
+      { tel: '09012345678', customerName: 'サンプル名前', message: 'こんにちは{customerName}様、サンプルメッセージです。' },
+      { tel: '08011112222', customerName: 'テスト太郎', message: 'こんにちは{customerName}様、サンプルメッセージです。' }
     ];
     
     // ワークブック生成
@@ -545,6 +1076,132 @@ const BulkSendForm: React.FC = () => {
     XLSX.writeFile(wb, 'sms_sample_data.xlsx');
   };
 
+  // テスト用関数（開発時にのみ実行）
+  const runTests = () => {
+    console.log('=== テスト実行中 ===');
+    
+    // 1. プレビュー表示テスト
+    console.log('1. プレビュー表示テスト:');
+    // ヘッダー行が表示されないことを確認
+    const previewData = parsedData.slice(1, 4);
+    console.log(`- プレビューデータ数: ${previewData.length} (期待値: ヘッダー行を除いた件数)`);
+    
+    // 2. 文字数/通数テスト
+    console.log('2. 文字数/通数表示テスト:');
+    const testCharCount = 150;
+    const testMessageCount = 2;
+    console.log(`- 文字数テスト(${testCharCount}文字): クラス=${getCharCountClass(testCharCount)}`);
+    console.log(`- 通数テスト(${testMessageCount}通): 通数スタイル=${testMessageCount > 1 ? 'warning' : 'normal'}`);
+    
+    console.log('=== テスト完了 ===');
+  };
+  
+  // DEBUG: 開発環境でのみテスト実行
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      // runTests();
+    }
+  }, [parsedData]);
+
+  // 電話番号のフォーマット関数
+  const formatPhoneNumber = (phoneNumber: string): string => {
+    if (!phoneNumber) return '';
+    
+    // 数字以外の文字を除去
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    
+    // 日本の携帯電話/固定電話の一般的なフォーマット
+    if (cleaned.startsWith('0')) {
+      if (cleaned.length === 11) { // 携帯電話の場合（例: 090-1234-5678）
+        return cleaned.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3');
+      } else if (cleaned.length === 10) { // 固定電話の場合（例: 03-1234-5678）
+        return cleaned.replace(/(\d{2,4})(\d{2,4})(\d{4})/, '$1-$2-$3');
+      }
+    }
+    
+    // 国際形式の場合や他の形式の場合はそのまま返す
+    return phoneNumber;
+  };
+
+  // メッセージプレビュー生成関数
+  const createPreview = (rowData: Record<string, any>, templateMessage: string): string => {
+    if (!templateMessage) return '';
+    
+    let preview = templateMessage;
+    
+    // ファイルからのメッセージ内容を優先チェック（J列を明示的に優先）
+    if (rowData['J'] !== undefined && rowData['J'] !== null && rowData['J'] !== '') {
+      // J列のメッセージが存在する場合、テンプレートを置き換える
+      preview = String(rowData['J']);
+      console.log('J列のメッセージを使用:', preview);
+    } else {
+      // J列がない場合は他のメッセージフィールドを探す
+      const messageField = Object.keys(rowData).find(key => 
+        key === 'message' || 
+        key.toLowerCase() === 'メッセージ' || 
+        key.toLowerCase() === 'sms' || 
+        key.toLowerCase() === '内容'
+      );
+      
+      if (messageField && rowData[messageField]) {
+        preview = String(rowData[messageField]);
+        console.log('他のメッセージフィールドを使用:', messageField, preview);
+      }
+    }
+    
+    // 1. 通常のタグ置換（例：{customerName} → 実際の顧客名）
+    Object.keys(rowData).forEach(key => {
+      const tagPattern = new RegExp(`{${key}}`, 'g');
+      if (rowData[key] !== undefined && rowData[key] !== null) {
+        preview = preview.replace(tagPattern, String(rowData[key]));
+      }
+    });
+    
+    // 2. 特別なタグの置換（顧客名） - B列を優先的にチェック
+    let customerName = '';
+    
+    // B列の値を優先的に確認
+    if (rowData['B'] !== undefined && rowData['B'] !== null && rowData['B'] !== '') {
+      customerName = String(rowData['B']);
+    } else {
+      // B列がない場合は他の顧客名フィールドを探す
+      const nameField = Object.keys(rowData).find(key => 
+        key === 'customerName' || 
+        key.toLowerCase() === '顧客名' || 
+        key.toLowerCase() === 'name' ||
+        key.toLowerCase() === '名前' ||
+        key.toLowerCase() === 'お名前'
+      );
+      
+      if (nameField && rowData[nameField]) {
+        customerName = String(rowData[nameField]);
+      }
+    }
+    
+    if (preview.includes('{customerName}') && customerName) {
+      preview = preview.replace(/{customerName}/g, customerName);
+    }
+    
+    // 3. URL置換
+    const urlTagPattern = /{URL\d*}/g;
+    if (urlTagPattern.test(preview)) {
+      const urlField = Object.keys(rowData).find(key => 
+        key === 'original_url' || 
+        key === 'url' ||
+        key === 'K'
+      );
+      
+      const url = (urlField && rowData[urlField]) ? String(rowData[urlField]) : '';
+      const urlTags = preview.match(urlTagPattern) || [];
+      
+      urlTags.forEach(tag => {
+        preview = preview.replace(tag, url);
+      });
+    }
+    
+    return preview;
+  };
+
   return (
     <motion.div 
       className="card"
@@ -555,544 +1212,932 @@ const BulkSendForm: React.FC = () => {
       <div className="mb-5">
         <h2 className="text-lg font-medium text-grey-900">一斉送信</h2>
         <p className="mt-1 text-sm text-grey-500">
-          CSVファイルまたはExcelファイルをアップロードして複数の宛先にSMSを一斉送信します。
-          {canUseInternational && <span className="ml-1 text-primary-600">国際電話番号への送信も可能です。</span>}
+          CSVファイルまたはExcelファイルをアップロードして複数の宛先にSMSを一括送信します。
         </p>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      {renderStepIndicator()}
+
+      <form onSubmit={handleSubmit} className="mt-6">
         <motion.div className="space-y-6" variants={container}>
-          <motion.div variants={item}>
-            <div className="flex items-center mb-4">
-              <label className="inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isTestMode}
-                  onChange={toggleTestMode}
-                  className="form-checkbox"
-                  disabled={isConfirmMode}
-                />
-                <span className="ml-2 text-sm font-medium text-grey-700">テスト送信モード</span>
-              </label>
-              <div className="ml-4 text-sm text-grey-500">
-                {isTestMode ? 'ファイル内の宛先ではなく、テスト用携帯番号にのみ送信します' : '通常の送信モードです'}
-              </div>
-            </div>
-          </motion.div>
-
-          {isTestMode && (
-            <motion.div variants={item}>
-              <label htmlFor="test-recipient" className="form-label flex items-center">
-                テスト送信用携帯番号 <span className="text-error-500 ml-1">*</span>
-              </label>
-              <div className="mt-1">
-                {canUseInternational ? (
-                  <PhoneNumberInput
-                    value={testRecipient}
-                    onChange={handlePhoneNumberChange}
-                    placeholder="例: 09012345678"
-                    disabled={isConfirmMode}
-                    required
-                  />
-                ) : (
-                  <input
-                    type="tel"
-                    id="test-recipient"
-                    value={testRecipient}
-                    onChange={(e) => setTestRecipient(e.target.value)}
-                    placeholder="例: 09012345678"
-                    className="form-input"
-                    disabled={isConfirmMode}
-                    required
-                  />
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          <motion.div variants={item}>
-            <SenderNumberSelect 
-              onChange={handleSenderNumberChange}
-              disabled={isConfirmMode}
-            />
-          </motion.div>
-          
-          <motion.div variants={item}>
-            <ShortenedUrlInput 
-              onUpdate={handleOriginalUrlUpdate}
-              onInsertTag={handleInsertTag}
-              initialUrl={originalUrl}
-              showMultipleUrls={multipleUrlsEnabled}
-              urlIndex={urlTagIndex}
-              disabled={isConfirmMode}
-            />
-            <p className="mt-1 text-xs text-grey-500">
-              ファイルでURLを指定する場合、11列目(K列、名前: original_url)に設定してください。
-              この欄に入力されたURLはテンプレートに設定された短縮元URLよりも優先されます。
-            </p>
-          </motion.div>
-
-          <motion.div variants={item}>
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-              <label className="inline-flex items-center text-sm cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isLongSMSEnabled}
-                  onChange={() => setIsLongSMSEnabled(!isLongSMSEnabled)}
-                  className="form-checkbox mr-2 h-4 w-4"
-                  disabled={isConfirmMode}
-                />
-                長文SMS
-              </label>
-              <span className="text-xs text-grey-500">
-                {isLongSMSEnabled ? (
-                  <>docomo: 660文字、au/SoftBank/Rakuten: 670文字</>
-                ) : (
-                  <>通常SMS: 70文字まで</>
-                )}
-              </span>
-            </div>
-          </motion.div>
-
-          {!isConfirmMode && (
+          {/* ステップ1: ファイルアップロード */}
+          {currentStep === SendStep.FILE_UPLOAD && (
             <>
-              <motion.div variants={item}>
-                <div className="mb-4">
-                  <label className="form-label">文字コードを選択</label>
-                  <div className="mt-1 flex space-x-4">
-                    <label className="inline-flex items-center">
-                      <input
-                        type="radio"
-                        className="form-radio"
-                        name="encoding"
-                        checked={fileEncoding === 'shift-jis'}
-                        onChange={() => handleEncodingChange('shift-jis')}
-                        disabled={isConfirmMode}
-                      />
-                      <span className="ml-2 text-sm text-grey-700">Shift-JIS (Windows推奨)</span>
-                    </label>
-                    <label className="inline-flex items-center">
-                      <input
-                        type="radio"
-                        className="form-radio"
-                        name="encoding"
-                        checked={fileEncoding === 'utf-8'}
-                        onChange={() => handleEncodingChange('utf-8')}
-                        disabled={isConfirmMode}
-                      />
-                      <span className="ml-2 text-sm text-grey-700">UTF-8</span>
-                    </label>
-                  </div>
-                </div>
-              </motion.div>
+          <motion.div variants={item}>
+                <SenderNumberSelect 
+                  onChange={handleSenderNumberChange}
+                  initialSenderNumber={senderNumber}
+                  disabled={isProcessing}
+                />
+          </motion.div>
 
-              <motion.div variants={item}>
-                <div className="mb-4">
-                  <label className="form-label mb-2">ファイル形式</label>
-                  <div className="flex space-x-4 border border-grey-200 rounded-md p-3 bg-grey-50">
-                    <button
-                      type="button"
-                      onClick={() => handleFileFormatChange('csv')}
-                      className={`flex items-center px-4 py-2 rounded ${
-                        fileFormat === 'csv' 
-                          ? 'bg-primary-100 text-primary-700 border border-primary-300' 
-                          : 'bg-white border border-grey-300 text-grey-700 hover:bg-grey-100'
-                      }`}
-                      disabled={isConfirmMode}
+            <motion.div variants={item}>
+                <div className="mt-4">
+                  <label className="form-label">送信ファイル</label>
+              <div className="mt-1">
+                    <div
+                      ref={dropZoneRef}
+                      className={`border-2 border-dashed rounded-md p-6 text-center transition-colors
+                        ${showDropZone ? 'border-primary-500 bg-primary-50' : 'border-grey-300'}
+                        ${file ? 'bg-grey-50' : 'hover:bg-grey-50'}
+                      `}
                     >
-                      <FileText className="h-5 w-5 mr-2" />
-                      CSVファイル
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleFileFormatChange('excel')}
-                      className={`flex items-center px-4 py-2 rounded ${
-                        fileFormat === 'excel' 
-                          ? 'bg-primary-100 text-primary-700 border border-primary-300' 
-                          : 'bg-white border border-grey-300 text-grey-700 hover:bg-grey-100'
-                      }`}
-                      disabled={isConfirmMode}
-                    >
-                      <FileSpreadsheet className="h-5 w-5 mr-2" />
-                      Excelファイル
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDownloadSample}
-                      className="flex items-center px-3 py-2 text-sm text-grey-700 bg-white border border-grey-300 rounded hover:bg-grey-100"
-                      title="サンプルファイルをダウンロード"
-                      disabled={isConfirmMode}
-                    >
-                      <FileDown className="h-4 w-4 mr-1" />
-                      サンプル
-                    </button>
+                      {isUploading ? (
+                        <div className="space-y-4">
+                          <div className="flex justify-center">
+                            <FileUp className="w-12 h-12 text-primary-400 animate-bounce" />
+                          </div>
+                          <h3 className="text-sm font-medium text-grey-900">
+                            ファイルをアップロード中...
+                          </h3>
+                          <div className="relative w-full h-2 bg-grey-200 rounded-full overflow-hidden">
+                            <div
+                              className="absolute top-0 left-0 h-full bg-primary-500 transition-all duration-300"
+                              style={{ width: `${uploadProgress}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      ) : file ? (
+                        <div className="space-y-2">
+                          <div className="flex justify-center">
+                            <FileCheck className="w-12 h-12 text-success-500" />
+                          </div>
+                          <h3 className="text-sm font-medium text-grey-900">
+                            {file.name}
+                          </h3>
+                          <p className="text-xs text-grey-500">
+                            {parsedData.length}件のデータが読み込まれました
+                            {hasInternationalNumbers && (
+                              <span className="text-primary-600 ml-1">（国際電話番号を含む）</span>
+                            )}
+                          </p>
+                          <div className="flex justify-center space-x-2 mt-2">
+                            <button
+                              type="button"
+                              onClick={resetFileUpload}
+                              className="btn btn-sm btn-outline"
+                            >
+                              <X className="w-4 h-4 mr-1" />
+                              削除
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex justify-center">
+                            <Upload className="w-12 h-12 text-grey-400" />
+                          </div>
+                          <h3 className="text-sm font-medium text-grey-900">
+                            CSVまたはExcelファイルをドラッグ&ドロップ
+                          </h3>
+                          <p className="text-xs text-grey-500">
+                            または
+                          </p>
+                          <div>
+                            <label htmlFor="file-upload" className="btn btn-sm btn-outline">
+                              <FileText className="w-4 h-4 mr-1" />
+                              ファイルを選択
+                            </label>
+                            <input
+                              id="file-upload"
+                              name="file-upload"
+                              type="file"
+                              accept=".csv,.xlsx,.xls"
+                              className="sr-only"
+                              ref={fileInputRef}
+                              onChange={handleFileChange}
+                              disabled={isProcessing}
+                />
+              </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1 text-sm text-grey-500">
-                    {fileFormat === 'csv' 
-                      ? 'CSVファイル形式: エクセルなどで作成し、CSV(カンマ区切り)で保存してください。' 
-                      : 'Excel形式: .xlsx または .xls 形式のファイルに対応しています。'}
-                  </p>
-                </div>
-              </motion.div>
 
-              <motion.div variants={item}>
-                <label className="form-label">ファイルアップロード</label>
-                <div className="mt-1" ref={dropZoneRef}>
-                  <div 
-                    className={`border-2 border-dashed rounded-md px-6 pt-5 pb-6 transition-all duration-200 ${
-                      showDropZone 
-                        ? 'border-primary-400 bg-primary-50' 
-                        : file 
-                          ? 'border-primary-400 bg-primary-50' 
-                          : 'border-grey-300 hover:border-grey-400'
-                    }`}
-                  >
-                    <div className="space-y-1 text-center">
-                      {fileFormat === 'csv' 
-                        ? <FileText className={`mx-auto h-12 w-12 ${file ? 'text-primary-500' : 'text-grey-400'}`} />
-                        : <FileSpreadsheet className={`mx-auto h-12 w-12 ${file ? 'text-primary-500' : 'text-grey-400'}`} />
-                      }
-                      <div className="flex text-sm text-grey-600 justify-center">
-                        <label
-                          htmlFor="file-upload"
-                          className="relative cursor-pointer rounded-md font-medium text-primary-600 hover:text-primary-500"
-                        >
-                          <span>{fileFormat === 'csv' ? 'CSVファイル' : 'Excelファイル'}を選択</span>
-                          <input
-                            id="file-upload"
-                            name="file-upload"
-                            type="file"
-                            accept={fileFormat === 'csv' ? '.csv' : '.xlsx,.xls'}
-                            className="sr-only"
-                            onChange={handleFileChange}
-                            ref={fileInputRef}
-                            disabled={isUploading || isProcessing || isConfirmMode}
-                          />
-                        </label>
-                        <p className="pl-1">またはここにドラッグ&ドロップ</p>
-                      </div>
-                      <p className="text-xs text-grey-500">
-                        {file ? file.name : `${fileFormat === 'csv' ? '.csv' : '.xlsx/.xls'} 形式のファイルをアップロードしてください`}
-                      </p>
-                      <p className="text-xs text-grey-500 mt-1">
-                        最大ファイルサイズ: 50MB、最大レコード数: 50万件
-                      </p>
+                  <div className="mt-2 flex space-x-2">
+                    <div className="flex items-center text-xs text-grey-500">
+                      <button
+                        type="button"
+                        onClick={handleDownloadSample}
+                        className="text-primary-600 hover:text-primary-700"
+                      >
+                        サンプルファイルをダウンロード
+                      </button>
                     </div>
                   </div>
                 </div>
+          </motion.div>
+          
+              <motion.div variants={item} className="mt-2 flex flex-col space-y-2">
+                <h4 className="text-sm font-medium text-grey-900">
+                  ファイル設定
+                </h4>
+                <div className="flex space-x-4">
+                  <div>
+                    <label className="text-xs text-grey-700 mb-1 block">ファイル形式</label>
+                    <div className="flex space-x-2">
+                      <button
+                        type="button"
+                        onClick={() => handleFileFormatChange('csv')}
+                        className={`btn btn-xs ${fileFormat === 'csv' ? 'btn-primary' : 'btn-outline'}`}
+                      >
+                        CSV
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleFileFormatChange('excel')}
+                        className={`btn btn-xs ${fileFormat === 'excel' ? 'btn-primary' : 'btn-outline'}`}
+                      >
+                        Excel
+                      </button>
+                    </div>
+                  </div>
+                  
+                  {fileFormat === 'csv' && (
+                    <div>
+                      <label className="text-xs text-grey-700 mb-1 block">文字コード</label>
+                      <div className="flex space-x-2">
+                <button
+                  type="button"
+                          onClick={() => handleEncodingChange('shift-jis')}
+                          className={`btn btn-xs ${fileEncoding === 'shift-jis' ? 'btn-primary' : 'btn-outline'}`}
+                        >
+                          Shift-JIS
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleEncodingChange('utf-8')}
+                          className={`btn btn-xs ${fileEncoding === 'utf-8' ? 'btn-primary' : 'btn-outline'}`}
+                        >
+                          UTF-8
+                </button>
+              </div>
+            </div>
+                  )}
+                </div>
+              </motion.div>
+              
+              <div className="flex justify-end mt-8">
+                <button
+                  type="button"
+                  onClick={validateAndProceed}
+                  className="btn btn-primary"
+                  disabled={!file || isProcessing}
+                >
+                  次へ
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ステップ2: 本文設定 */}
+          {currentStep === SendStep.CONTENT && (
+            <>
+              <motion.div variants={item}>
+                <div className="mb-4">
+                  <label htmlFor="message" className="form-label flex justify-between items-center">
+                    <span>メッセージ本文</span>
+                    <span className="text-xs text-grey-500">
+                      <span className={getCharCountClass(characterCount)}>
+                        {characterCount}文字
+                      </span>
+                      {messageCount > 1 && (
+                        <span className="ml-2 px-2 py-0.5 bg-warning-50 text-warning-600 rounded-full text-xs">
+                          {messageCount}通
+                        </span>
+                      )}
+                    </span>
+                  </label>
+            <div className="mt-1">
+              <textarea
+                      id="message"
+                rows={5}
+                      value={message || previewTemplate}
+                onChange={(e) => setMessage(e.target.value)}
+                className="form-input"
+                      placeholder="メッセージ本文を入力してください。ファイル内の列名を{列名}の形式で挿入すると、送信時に置換されます。"
+                      disabled={isProcessing}
+              />
+            </div>
+                  <div className="mt-2">
+                    <div className="p-3 border rounded-md bg-grey-50">
+                      <div className="text-xs font-medium text-grey-700 mb-2">プレビュー:</div>
+                      <div className="text-sm whitespace-pre-wrap bg-white p-3 border rounded-md">
+                        {message || previewTemplate}
+                      </div>
+                    </div>
+              </div>
+            </div>
+            
+                <div className="mt-4">
+                  <label className="form-label flex items-center">
+                    <span>タグを挿入</span>
+                    <span className="ml-2 text-xs text-grey-500">ボタンをクリックすると本文にタグが挿入されます</span>
+                  </label>
+                  <div className="mt-1 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-outline"
+                      onClick={() => {
+                        const textArea = document.getElementById('message') as HTMLTextAreaElement;
+                        if (textArea) {
+                          const tag = '{customerName}';
+                          const start = textArea.selectionStart;
+                          const end = textArea.selectionEnd;
+                          const newContent = message.substring(0, start) + tag + message.substring(end);
+                          setMessage(newContent);
+                          
+                          // カーソル位置を挿入したタグの後ろに設定
+                          setTimeout(() => {
+                            textArea.focus();
+                            textArea.setSelectionRange(start + tag.length, start + tag.length);
+                          }, 0);
+                          
+                          toast.success('タグを挿入しました');
+                        }
+                      }}
+                    >
+                      顧客名
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-outline"
+                      onClick={() => {
+                        const textArea = document.getElementById('message') as HTMLTextAreaElement;
+                        if (textArea) {
+                          const tag = '{orderNumber}';
+                          const start = textArea.selectionStart;
+                          const end = textArea.selectionEnd;
+                          const newContent = message.substring(0, start) + tag + message.substring(end);
+                          setMessage(newContent);
+                          
+                          // カーソル位置を挿入したタグの後ろに設定
+                          setTimeout(() => {
+                            textArea.focus();
+                            textArea.setSelectionRange(start + tag.length, start + tag.length);
+                          }, 0);
+                          
+                          toast.success('タグを挿入しました');
+                        }
+                      }}
+                    >
+                      注文番号
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-outline"
+                      onClick={() => {
+                        const textArea = document.getElementById('message') as HTMLTextAreaElement;
+                        if (textArea) {
+                          const tag = '{appointmentDate}';
+                          const start = textArea.selectionStart;
+                          const end = textArea.selectionEnd;
+                          const newContent = message.substring(0, start) + tag + message.substring(end);
+                          setMessage(newContent);
+                          
+                          // カーソル位置を挿入したタグの後ろに設定
+                          setTimeout(() => {
+                            textArea.focus();
+                            textArea.setSelectionRange(start + tag.length, start + tag.length);
+                          }, 0);
+                          
+                          toast.success('タグを挿入しました');
+                        }
+                      }}
+                    >
+                      予約日
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-outline"
+                      onClick={() => {
+                        const textArea = document.getElementById('message') as HTMLTextAreaElement;
+                        if (textArea) {
+                          const tag = '{companyName}';
+                          const start = textArea.selectionStart;
+                          const end = textArea.selectionEnd;
+                          const newContent = message.substring(0, start) + tag + message.substring(end);
+                          setMessage(newContent);
+                          
+                          // カーソル位置を挿入したタグの後ろに設定
+                          setTimeout(() => {
+                            textArea.focus();
+                            textArea.setSelectionRange(start + tag.length, start + tag.length);
+                          }, 0);
+                          
+                          toast.success('タグを挿入しました');
+                        }
+                      }}
+                    >
+                      会社名
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-xs btn-outline"
+                      onClick={() => {
+                        const textArea = document.getElementById('message') as HTMLTextAreaElement;
+                        if (textArea) {
+                          const tag = `{URL${urlTagIndex}}`;
+                          const start = textArea.selectionStart;
+                          const end = textArea.selectionEnd;
+                          const newContent = message.substring(0, start) + tag + message.substring(end);
+                          setMessage(newContent);
+                          
+                          // カーソル位置を挿入したタグの後ろに設定
+                          setTimeout(() => {
+                            textArea.focus();
+                            textArea.setSelectionRange(start + tag.length, start + tag.length);
+                          }, 0);
+                          
+                          toast.success('URLタグを挿入しました');
+                        }
+                      }}
+                    >
+                      URL{urlTagIndex}
+                    </button>
+                  </div>
+            </div>
+            
+                <div className="mt-4">
+                  <ShortenedUrlInput
+                    onUpdate={handleOriginalUrlUpdate}
+                    onInsertTag={(tag) => {
+                      const textArea = document.getElementById('message') as HTMLTextAreaElement;
+                      if (textArea) {
+                        const start = textArea.selectionStart;
+                        const end = textArea.selectionEnd;
+                        const newContent = message.substring(0, start) + tag + message.substring(end);
+                        setMessage(newContent);
+                        
+                        // カーソル位置を挿入したタグの後ろに設定
+                        setTimeout(() => {
+                          textArea.focus();
+                          textArea.setSelectionRange(start + tag.length, start + tag.length);
+                        }, 0);
+                      }
+                    }}
+                    initialUrl={originalUrl}
+                    disabled={isProcessing}
+                  />
+            </div>
+            
+                {/* アップロードされたファイルからメッセージプレビュー */}
+                {parsedData.length > 0 && (
+                  <div className="mt-8 border border-grey-200 rounded-lg p-4 bg-grey-50">
+                    <div className="flex justify-between items-center mb-4">
+                      <h3 className="text-sm font-medium text-grey-900 flex items-center">
+                        <FileSpreadsheet className="w-4 h-4 mr-1" />
+                        アップロードファイルの内容
+                      </h3>
+                      <div className="flex items-center">
+                        <span className="text-xs text-grey-500 mr-2">
+                          {file?.name} - 全{parsedData.length}件
+                        </span>
+                </div>
+              </div>
+
+                    {/* アップロードされたファイル内容のテーブル表示 */}
+                    <div className="bg-white border border-grey-200 rounded-lg overflow-auto mb-6">
+                      <table className="w-full text-sm">
+                        <thead className="bg-grey-50 text-grey-700 sticky top-0">
+                          <tr>
+                            <th className="px-4 py-2 text-left font-medium">No.</th>
+                            <th className="px-4 py-2 text-left font-medium">電話番号</th>
+                            {(parsedData[0]?.customerName !== undefined || parsedData[0]?.B !== undefined) && (
+                              <th className="px-4 py-2 text-left font-medium">顧客名</th>
+                            )}
+                            {(parsedData[0]?.message !== undefined || parsedData[0]?.J !== undefined || parsedData[0]?.C !== undefined) && (
+                              <th className="px-4 py-2 text-left font-medium">メッセージ</th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-grey-200">
+                          {/* 1行目（ヘッダー行）は背景色を変えて表示 */}
+                          {parsedData.length > 0 && (
+                            <tr className="bg-grey-100">
+                              <td className="px-4 py-2 text-center">ヘッダー</td>
+                              <td className="px-4 py-2 font-medium">{parsedData[0].tel || parsedData[0].A || 'tel'}</td>
+                              {(parsedData[0]?.customerName !== undefined || parsedData[0]?.B !== undefined) && (
+                                <td className="px-4 py-2">{parsedData[0].customerName || parsedData[0].B || 'customerName'}</td>
+                              )}
+                              {(parsedData[0]?.message !== undefined || parsedData[0]?.J !== undefined || parsedData[0]?.C !== undefined) && (
+                                <td className="px-4 py-2 whitespace-pre-wrap max-w-xs">{parsedData[0].message || parsedData[0].C || parsedData[0].J || 'message'}</td>
+                              )}
+                            </tr>
+                          )}
+                          {/* 2行目以降（データ行）を表示 */}
+                          {parsedData.slice(1, 5).map((row, index) => (
+                            <tr key={index} className={index % 2 === 0 ? 'bg-white' : 'bg-grey-50'}>
+                              <td className="px-4 py-2 text-center">{index + 1}</td>
+                              <td className="px-4 py-2 font-medium">{row.tel || row.A || ''}</td>
+                              {(parsedData[0]?.customerName !== undefined || parsedData[0]?.B !== undefined) && (
+                                <td className="px-4 py-2">{row.customerName || row.B || ''}</td>
+                              )}
+                              {(parsedData[0]?.message !== undefined || parsedData[0]?.J !== undefined || parsedData[0]?.C !== undefined) && (
+                                <td className="px-4 py-2 whitespace-pre-wrap max-w-xs">{row.message || row.C || row.J || ''}</td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    
+                    <div className="mb-4 bg-primary-50 border border-primary-100 p-3 rounded-md flex items-start">
+                      <Info className="w-5 h-5 text-primary-500 mr-2 mt-0.5 flex-shrink-0" />
+                      <div className="text-xs text-grey-700">
+                        <p className="font-medium mb-1">ファイル内容とメッセージについて</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>ファイル内にメッセージ列がある場合は、そのメッセージが優先して使用されます</li>
+                          <li>メッセージ列がない場合は、上記テキストエリアで設定したメッセージテンプレートが使用されます</li>
+                          <li>{'{customerName}'} などのタグは、対応する項目のデータに置き換えられます</li>
+                          <li>エクセルファイルの場合、顧客名とメッセージ内容の列は自動的に認識されます</li>
+                        </ul>
+                        
+                        <p className="font-medium mt-3 mb-1">使用可能なタグ一覧：</p>
+                        <ul className="list-disc pl-4 space-y-1">
+                          <li>{'{customerName}'} - 顧客名</li>
+                          <li>{'{orderNumber}'} - 注文番号</li>
+                          <li>{'{appointmentDate}'} - 予約日</li>
+                          <li>{'{companyName}'} - 会社名</li>
+                          <li>{'{URL}'} - 短縮URL</li>
+                          <li>{'{tel}'} - 電話番号</li>
+                          <li>{'{memo}'} - メモ</li>
+                        </ul>
+                        <p className="mt-2 text-xs text-grey-500">※ アップロードファイルの項目名に合わせて {'{項目名}'} の形式でタグを使用することもできます</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6">
+                      <h3 className="text-sm font-medium text-grey-900 mb-3 flex items-center">
+                        <MessageSquare className="w-4 h-4 mr-1" />
+                        プレビュー:
+                      </h3>
+
+                      <div className="space-y-4">
+                        {/* 1行目はヘッダーなので、2行目以降のデータでプレビュー */}
+                        {parsedData.slice(1, 4).map((row, index) => {
+                          // 行ごとのメッセージ内容を生成
+                          let messageContent = message || previewTemplate;
+                          if (row.message || row.C || row.J) {
+                            messageContent = row.message || row.C || row.J || '';
+                          }
+                          
+                          // タグ置換をプレビュー
+                          Object.keys(row).forEach(key => {
+                            const tagPattern = new RegExp(`{${key}}`, 'g');
+                            messageContent = messageContent.replace(tagPattern, row[key] || '');
+                          });
+                          
+                          // URL置換をプレビュー
+                          const urlTagPattern = /{URL\d*}/g;
+                          if (urlTagPattern.test(messageContent)) {
+                            const url = row.original_url || row.K || originalUrl || '';
+                            const urlTags = messageContent.match(urlTagPattern) || [];
+                            urlTags.forEach(tag => {
+                              messageContent = messageContent.replace(tag, url);
+                            });
+                          }
+                          
+                          const smsLength = calculateSMSLength(messageContent, { enableLongSMS: isLongSMSEnabled });
+                          const smsCount = calculateSMSMessageCount(messageContent, { enableLongSMS: isLongSMSEnabled });
+                          
+                          return (
+                            <div key={index} className="bg-white rounded-lg shadow-sm border border-grey-200 p-3">
+                              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center">
+                                  <div className="bg-primary-100 text-primary-600 rounded-full w-6 h-6 flex items-center justify-center font-medium text-xs">
+                                    {index + 1}
+                                  </div>
+                                  <div className="ml-2 font-medium text-grey-700 text-sm">
+                                    宛先: {row.tel || row.A || ''}
+                                  </div>
+                                </div>
+                                <div className="text-xs text-grey-500">
+                                  <span className={getCharCountClass(smsLength)}>文字数: {smsLength}</span> / 
+                                  <span className={smsCount > 1 ? 'text-warning-600 ml-1' : 'ml-1'}>通数: {smsCount}</span>
+                                </div>
+                              </div>
+                              
+                              {/* スマホのSMS風デザイン */}
+                              <div className="border rounded-lg p-3 bg-grey-50">
+                                <div className="flex items-center justify-between mb-2">
+                                  <div className="flex items-center">
+                                    <div className="w-8 h-8 bg-primary-600 rounded-full flex items-center justify-center text-white font-bold">
+                                      S
+                                    </div>
+                                    <div className="ml-2">
+                                      <div className="text-xs font-medium text-grey-800">{senderNumber || '送信者'}</div>
+                                      <div className="text-xs text-grey-500">SMS</div>
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="p-3 bg-primary-50 rounded-lg border border-primary-100 text-grey-900 whitespace-pre-wrap text-sm mt-1">
+                                  {messageContent}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+              
+              <motion.div variants={item} className="pt-4 flex space-x-4 justify-between">
+                <button
+                  type="button"
+                  onClick={goToPreviousStep}
+                  className="btn-secondary px-6"
+                >
+                  戻る
+                </button>
+                <button
+                  type="button"
+                  onClick={validateAndProceed}
+                  className="btn-primary px-6"
+                >
+                  次へ <ChevronRight className="ml-1 h-4 w-4" />
+                </button>
+          </motion.div>
+            </>
+          )}
+
+          {/* ステップ3: 送信オプション */}
+          {currentStep === SendStep.OPTIONS && (
+            <>
+              <motion.div variants={item}>
+                <div className="mb-6">
+                  <h3 className="text-sm font-medium text-grey-900 mb-3">送信オプション</h3>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="inline-flex items-center cursor-pointer">
+                      <input
+                          type="checkbox"
+                          checked={isScheduled}
+                          onChange={() => setIsScheduled(!isScheduled)}
+                          className="form-checkbox"
+                          disabled={isProcessing}
+                        />
+                        <span className="ml-2 text-sm font-medium text-grey-700">予約送信</span>
+                    </label>
+                      
+                      {isScheduled && (
+                        <div className="mt-2 grid grid-cols-2 gap-4">
+                          <div>
+                            <label htmlFor="scheduled-date" className="form-label">日付</label>
+                      <input
+                              type="date"
+                              id="scheduled-date"
+                              value={scheduledDate}
+                              onChange={(e) => setScheduledDate(e.target.value)}
+                              className="form-input"
+                              disabled={isProcessing}
+                              min={new Date().toISOString().split('T')[0]}
+                            />
+                          </div>
+                          <div>
+                            <label htmlFor="scheduled-time" className="form-label">時間</label>
+                            <input
+                              type="time"
+                              id="scheduled-time"
+                              value={scheduledTime}
+                              onChange={(e) => setScheduledTime(e.target.value)}
+                              className="form-input"
+                              disabled={isProcessing}
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div>
+                      <label className="inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isTestMode}
+                          onChange={toggleTestMode}
+                          className="form-checkbox"
+                          disabled={isProcessing}
+                        />
+                        <span className="ml-2 text-sm font-medium text-grey-700">テスト送信モード</span>
+                    </label>
+                      
+                      {isTestMode && (
+                        <div className="mt-2">
+                          <label htmlFor="test-recipient" className="form-label">テスト送信用電話番号</label>
+                          <div className="mt-1">
+                            <PhoneNumberInput
+                              value={testRecipient}
+                              onChange={handlePhoneNumberChange}
+                              placeholder="例: 09012345678"
+                              disabled={isProcessing}
+                              required
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div variants={item} className="pt-4 flex space-x-4 justify-between">
+                    <button
+                      type="button"
+                  onClick={goToPreviousStep}
+                  className="btn-secondary px-6"
+                >
+                  戻る
+                    </button>
+                    <button
+                      type="button"
+                  onClick={validateAndProceed}
+                  className="btn-primary px-6"
+                >
+                  確認 <FileCheck className="ml-1 h-4 w-4" />
+                    </button>
               </motion.div>
             </>
           )}
 
-          {isUploading && (
-            <motion.div 
-              variants={item}
-              className="relative pt-1"
-            >
-              <div className="flex items-center justify-between mb-1">
-                <div>
-                  <span className="text-xs font-medium text-primary-600">アップロード中</span>
-                </div>
-                <div>
-                  <span className="text-xs font-medium text-primary-600">{Math.round(uploadProgress)}%</span>
-                </div>
-              </div>
-              <div className="overflow-hidden h-2 text-xs flex rounded bg-primary-100">
-                <div
-                  style={{ width: `${uploadProgress}%` }}
-                  className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary-500 transition-all duration-500"
-                ></div>
-              </div>
-            </motion.div>
-          )}
+          {/* ステップ4: 確認 */}
+          {currentStep === SendStep.CONFIRM && (
+            <>
+              <motion.div variants={item} className="space-y-4">
+                <h3 className="text-base font-medium text-grey-900">送信内容確認</h3>
 
-          {parsedData.length > 0 && !isConfirmMode && (
-            <motion.div variants={item} className="border rounded-md overflow-hidden">
-              <div className="bg-primary-50 px-4 py-3 border-b border-primary-200 flex items-center">
-                <FileCheck className="h-5 w-5 text-primary-500 mr-2" />
-                <div>
-                  <span className="font-medium text-primary-900">
-                    {fileFormat === 'csv' ? 'CSVファイル' : 'Excelファイル'}の解析結果
-                  </span>
-                  <p className="text-sm text-primary-700 mt-1">
-                    合計 {parsedData.length} 件のデータが読み込まれました
-                    {hasInternationalNumbers && (
-                      <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                        <Globe className="h-3 w-3 mr-1" />
-                        国際電話番号を含む
-                      </span>
-                    )}
+                {/* 日時指定の表示 */}
+                {isScheduled && (
+                  <div className="bg-info-50 p-4 rounded-md">
+                    <div className="flex items-start">
+                      <Calendar className="h-5 w-5 text-info-500 mt-0.5 mr-2" />
+                      <div>
+                        <h4 className="text-sm font-medium text-grey-900">予約送信が設定されています</h4>
+                        <p className="text-sm text-grey-600">
+                          {`${scheduledDate} ${scheduledTime}`} に送信されます
+                  </p>
+                  </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* テストモードの表示 */}
+                {isTestMode && (
+                  <div className="bg-warning-50 p-4 rounded-md">
+                    <div className="flex items-start">
+                      <AlertTriangle className="h-5 w-5 text-warning-500 mt-0.5 mr-2" />
+                      <div>
+                        <h4 className="text-sm font-medium text-grey-900">テスト送信モードが有効です</h4>
+                        <p className="text-sm text-grey-600">
+                          テスト送信先: {testRecipient}
                   </p>
                 </div>
-              </div>
-              
-              <div className="p-4">
-                <div className="mb-4">
-                  <div className="flex items-center">
-                    <Info className="h-5 w-5 text-grey-500 mr-2" />
-                    <span className="font-medium text-grey-700">データサンプル（先頭3件）</span>
+                    </div>
                   </div>
-                  
-                  <div className="mt-2 border rounded-md overflow-x-auto">
-                    <table className="min-w-full divide-y divide-grey-200">
-                      <thead className="bg-grey-50">
-                        <tr>
-                          {Object.keys(parsedData[0]).map((header) => (
-                            <th 
-                              key={header}
-                              className="px-4 py-2 text-left text-xs font-medium text-grey-500 uppercase tracking-wider"
-                            >
-                              {header}
+                )}
+
+                {/* ファイル内容の表示 */}
+                <div className="border border-grey-200 rounded-md overflow-hidden">
+                  <div className="bg-grey-50 px-4 py-3 border-b border-grey-200">
+                    <h4 className="text-sm font-medium text-grey-900">アップロードファイル内容</h4>
+                  </div>
+                  <div className="p-4">
+                    <div className="flex items-center text-sm text-grey-600 mb-2">
+                      <FileText className="w-4 h-4 mr-1.5" />
+                      <span className="font-medium">{file?.name}</span>
+                      <span className="mx-1">-</span>
+                      <span>{parsedData.length - 1}件</span>
+                    </div>
+
+                    <div className="mt-3 border border-grey-200 rounded-md overflow-x-auto">
+                      <table className="min-w-full divide-y divide-grey-200">
+                        <thead className="bg-grey-50">
+                          <tr>
+                            <th scope="col" className="px-3 py-2 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                              No
                             </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody className="bg-white divide-y divide-grey-200">
-                        {parsedData.slice(0, 3).map((row, index) => (
-                          <tr key={index}>
-                            {Object.entries(row).map(([key, value], valueIndex) => (
-                              <td 
-                                key={`${index}-${key}`}
-                                className="px-4 py-2 text-sm text-grey-900 max-w-xs truncate"
-                              >
-                                {value}
-                              </td>
+                            {/* ヘッダー行から項目名を動的に生成 */}
+                            {parsedData.length > 0 && Object.keys(parsedData[0]).slice(0, 5).map((header, idx) => (
+                              <th key={idx} scope="col" className="px-3 py-2 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                                {header}
+                              </th>
                             ))}
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-                
-                {previewTemplate && (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center">
-                        <FileText className="h-5 w-5 text-grey-500 mr-2" />
-                        <span className="font-medium text-grey-700">メッセージテンプレートプレビュー</span>
-                      </div>
-                      <div className="text-sm text-grey-600">
-                        <span className={characterCount > characterLimit ? 'text-error-600' : ''}>
-                          {characterCount} / {characterLimit}文字
-                        </span>
-                        {messageCount > 1 && (
-                          <span className="ml-2 px-2 py-0.5 bg-grey-100 rounded-full text-xs">
-                            {messageCount}通分
-                          </span>
-                        )}
-                      </div>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-grey-200">
+                          {parsedData.slice(1, 4).map((row, rowIndex) => (
+                            <tr key={rowIndex} className={rowIndex % 2 === 0 ? 'bg-white' : 'bg-grey-50'}>
+                              <td className="px-3 py-2 whitespace-nowrap text-xs text-grey-500">
+                                {rowIndex + 1}
+                              </td>
+                              {/* 項目値を動的に表示 */}
+                              {Object.keys(parsedData[0]).slice(0, 5).map((header, colIndex) => (
+                                <td key={colIndex} className="px-3 py-2 whitespace-nowrap text-xs text-grey-900">
+                                  {row[header] || '-'}
+                                </td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                    <div className="p-3 border rounded-md bg-grey-50">
-                      <p className="text-sm text-grey-800 whitespace-pre-wrap">
-                        {previewTemplate
-                          .replace(/{info\d+}/g, '【ダミーデータ】')
-                          .replace(/{URL\d*}/g, originalUrl ? 'https://sms.l/abc123' : '{URL}')}
-                      </p>
-                    </div>
-                    {characterCount > characterLimit && (
-                      <p className="mt-1 text-sm text-error-600 flex items-center">
-                        <AlertCircle className="h-4 w-4 mr-1" />
-                        文字数制限を超えています。送信できません。
-                      </p>
+                    
+                    {parsedData.length > 4 && (
+                      <div className="mt-2 text-xs text-grey-500 text-right">
+                        ...他 {parsedData.length - 4} 件
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-          
-          {/* 確認モード表示 */}
-          {isConfirmMode && (
-            <motion.div 
-              variants={item}
-              className="border border-grey-200 rounded-md p-4 bg-grey-50"
-            >
-              <h3 className="font-medium text-grey-900 mb-3">送信内容の確認</h3>
-              
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-grey-500">ファイル名</p>
-                    <p className="text-sm text-grey-900">
-                      {file?.name}
-                    </p>
+                </div>
+
+                {/* メッセージ内容 */}
+                <div className="border border-grey-200 rounded-md overflow-hidden">
+                  <div className="bg-grey-50 px-4 py-3 border-b border-grey-200">
+                    <h4 className="text-sm font-medium text-grey-900">メッセージテンプレート</h4>
                   </div>
-                  
-                  <div>
-                    <p className="text-sm font-medium text-grey-500">データ件数</p>
-                    <p className="text-sm text-grey-900 flex items-center">
-                      {parsedData.length}件
-                      {hasInternationalNumbers && canUseInternational && (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                          <Globe className="h-3 w-3 mr-1" />
-                          国際電話番号を含む
+                  <div className="p-4">
+                    <p className="text-sm text-grey-700 whitespace-pre-line">{message || previewTemplate}</p>
+                    {/* アップロードされたファイルにメッセージ列が含まれる場合の注記 */}
+                    {parsedData.length > 0 && (Object.keys(parsedData[0]).some(key => 
+                      key === 'message' || 
+                      key === 'J' || 
+                      key.toLowerCase() === 'メッセージ' || 
+                      key.toLowerCase() === 'sms' || 
+                      key.toLowerCase() === '内容'
+                    )) && (
+                      <div className="mt-2 text-xs text-grey-500 italic flex items-start">
+                        <AlertCircle className="w-3 h-3 inline mr-1 mt-0.5 flex-shrink-0" />
+                        <span>
+                          ファイルにメッセージ列（J列）が含まれる場合、各行のメッセージがこのテンプレートより優先されます
                         </span>
-                      )}
-                    </p>
+                      </div>
+                    )}
                   </div>
                 </div>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-grey-500">送信元</p>
-                    <p className="text-sm text-grey-900">{senderNumber}</p>
+
+                {/* SMS実際の送信内容 */}
+                <div className="border border-grey-200 rounded-md overflow-hidden">
+                  <div className="bg-grey-50 px-4 py-3 border-b border-grey-200">
+                    <h4 className="text-sm font-medium text-grey-900">SMS送信内容（プレビュー）</h4>
                   </div>
-                  
-                  {isTestMode && (
-                    <div>
-                      <p className="text-sm font-medium text-grey-500">テスト送信先</p>
-                      <p className="text-sm text-grey-900 flex items-center">
-                        {isInternational && (
-                          <span className="mr-1 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-primary-100 text-primary-800">
-                            <Globe className="h-3 w-3 mr-1" />
-                            国際
-                          </span>
-                        )}
-                        {testRecipient}
-                      </p>
+                  <div className="p-4">
+                    <div className="space-y-4">
+                      {/* 1行目はヘッダーなので、2行目以降のデータでプレビュー - 表示数を5件に制限 */}
+                      {parsedData.slice(1, 6).map((row, index) => {
+                        // メッセージ内容を取得（優先順位: J列 > message列 > テンプレート）
+                        let messageContent = message || previewTemplate;
+                        
+                        // J列のメッセージを優先（明示的にundefind/null/空文字チェック）
+                        if (row['J'] !== undefined && row['J'] !== null && row['J'] !== '') {
+                          messageContent = String(row['J']);
+                        } else {
+                          // J列がない場合は他のメッセージフィールドを探す
+                          const messageField = Object.keys(row).find(key => 
+                            key === 'message' || 
+                            key.toLowerCase() === 'メッセージ' || 
+                            key.toLowerCase() === 'sms' || 
+                            key.toLowerCase() === '内容'
+                          );
+                          
+                          if (messageField && row[messageField]) {
+                            messageContent = String(row[messageField]);
+                          }
+                        }
+                        
+                        // 電話番号を取得
+                        const telField = Object.keys(row).find(key => 
+                          key === 'tel' || 
+                          key.toLowerCase() === '電話番号' || 
+                          key.toLowerCase() === 'phone' ||
+                          key.toLowerCase() === '宛先' ||
+                          key === 'A'
+                        );
+                        
+                        // 顧客名を取得（B列を優先）
+                        let customerName = '';
+                        if (row['B'] !== undefined && row['B'] !== null && row['B'] !== '') {
+                          customerName = String(row['B']);
+                        } else {
+                          const customerNameField = Object.keys(row).find(key => 
+                            key === 'customerName' || 
+                            key.toLowerCase() === '顧客名' || 
+                            key.toLowerCase() === 'name' ||
+                            key.toLowerCase() === '名前' ||
+                            key.toLowerCase() === 'お名前'
+                          );
+                          
+                          if (customerNameField && row[customerNameField]) {
+                            customerName = String(row[customerNameField]);
+                          }
+                        }
+                        
+                        // プレビュー生成
+                        const preview = createPreview(row, messageContent);
+                        console.log(`行 ${index + 1} のプレビュー: ${preview}`);
+                        
+                        return (
+                          <div key={index} className="p-3 bg-grey-50 rounded-md">
+                            <div className="flex items-start">
+                              <div className="flex-shrink-0">
+                                <PhoneOutgoing className="h-4 w-4 text-primary-500 mt-0.5" />
+                      </div>
+                              <div className="ml-2 flex-1">
+                                <div className="flex items-center">
+                                  <span className="text-xs font-medium text-grey-700">
+                                    {telField ? formatPhoneNumber(row[telField] || '') : ''}
+                                  </span>
+                                  {customerName && (
+                                    <>
+                                      <span className="mx-1 text-grey-400">|</span>
+                                      <span className="text-xs text-grey-600">{customerName}</span>
+                                    </>
+                                  )}
+                                </div>
+                                <p className="mt-1 text-sm text-grey-900 whitespace-pre-line">{preview}</p>
+                                <div className="mt-1 text-right">
+                                  <span className="text-xs text-grey-500">
+                                    {calculateSMSLength(preview, { enableLongSMS: isLongSMSEnabled })}文字
+                                    {' / '}
+                                    {calculateSMSMessageCount(preview, { enableLongSMS: isLongSMSEnabled })}通
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  )}
+                    
+                    {parsedData.length > 6 && (
+                      <div className="mt-3 text-xs text-grey-500 text-right">
+                        ...他 {parsedData.length - 6} 件
+                      </div>
+                    )}
+                  </div>
                 </div>
                 
-                {previewTemplate && (
-                  <div>
-                    <p className="text-sm font-medium text-grey-500">メッセージプレビュー</p>
-                    <p className="text-sm text-grey-900 whitespace-pre-wrap p-3 bg-white rounded border border-grey-200">
-                      {previewTemplate
-                        .replace(/{info\d+}/g, '【ダミーデータ】')
-                        .replace(/{URL\d*}/g, originalUrl ? 'https://sms.l/abc123' : '{URL}')}
-                    </p>
+                {/* 送信確認 */}
+                <div>
+                  <h3 className="text-base font-medium text-grey-900 mb-2">送信確認</h3>
+                  <div className="bg-grey-50 p-4 rounded-md">
+                    <div className="flex items-start">
+                      <Info className="h-5 w-5 text-grey-400 mt-0.5 mr-2" />
+                      <div>
+                        <h4 className="text-sm font-medium text-grey-900">以下の内容でSMSを送信します</h4>
+                        <ul className="mt-2 text-sm text-grey-700 space-y-1">
+                          <li>• 送信者ID: <span className="font-medium">{senderNumber}</span></li>
+                          <li>• 送信件数: <span className="font-medium">{parsedData.length - 1}件</span></li>
+                          {isTestMode && (
+                            <li>• テスト送信先: <span className="font-medium">{testRecipient}</span></li>
+                          )}
+                          {isScheduled && (
+                            <li>• 送信日時: <span className="font-medium">{`${scheduledDate} ${scheduledTime}`}</span></li>
+                          )}
+                        </ul>
+                      </div>
+                    </div>
                   </div>
-                )}
-                
-                {originalUrl && (
-                  <div>
-                    <p className="text-sm font-medium text-grey-500">短縮元URL</p>
-                    <p className="text-sm text-grey-900 font-mono">{originalUrl}</p>
-                  </div>
-                )}
-                
-                {isScheduled && scheduledDate && scheduledTime && (
-                  <div>
-                    <p className="text-sm font-medium text-grey-500">予約送信日時</p>
-                    <p className="text-sm text-grey-900">
-                      {scheduledDate} {scheduledTime}
-                    </p>
-                  </div>
-                )}
-                
-                {isTestMode && (
-                  <div className="p-3 bg-warning-50 border border-warning-200 rounded-md">
-                    <p className="text-sm text-warning-800 flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-2 text-warning-500" />
-                      テスト送信モードが有効です。送信先は「{testRecipient}」のみとなります。
-                    </p>
-                  </div>
-                )}
-              </div>
-            </motion.div>
+                </div>
+              </motion.div>
+              
+              {/* 確認ステップのボタン */}
+              {currentStep === SendStep.CONFIRM && (
+                <div className="flex items-center justify-between mt-8">
+                  <button
+                    type="button"
+                    onClick={goToPreviousStep}
+                    className="btn-secondary flex-1"
+                    disabled={isProcessing}
+                  >
+                    編集に戻る
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn-primary flex-1"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        送信中...
+                      </>
+                    ) : (
+                      <>
+                        <Send className="mr-2 h-5 w-5" />
+                        SMS送信
+                      </>
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           )}
-
-          {!isConfirmMode && (
-            <motion.div variants={item}>
-              <div className="flex items-center">
-                <input
-                  id="schedule"
-                  name="schedule"
-                  type="checkbox"
-                  checked={isScheduled}
-                  onChange={() => setIsScheduled(!isScheduled)}
-                  className="form-checkbox"
-                  disabled={isConfirmMode}
-                />
-                <label htmlFor="schedule" className="ml-2 block text-sm text-grey-700">
-                  送信を予約する
-                </label>
-              </div>
-            </motion.div>
-          )}
-
-          {isScheduled && !isConfirmMode && (
-            <motion.div 
-              className="flex space-x-4"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex-1">
-                <label htmlFor="bulk-scheduled-date" className="form-label">
-                  予約日
-                </label>
-                <input
-                  type="date"
-                  id="bulk-scheduled-date"
-                  className="form-input"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                  disabled={isConfirmMode}
-                />
-              </div>
-              <div className="flex-1">
-                <label htmlFor="bulk-scheduled-time" className="form-label">
-                  予約時間
-                </label>
-                <input
-                  type="time"
-                  id="bulk-scheduled-time"
-                  className="form-input"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                  disabled={isConfirmMode}
-                />
-              </div>
-            </motion.div>
-          )}
-
-          <motion.div variants={item} className="pt-4">
-            {isConfirmMode ? (
-              <div className="flex space-x-4">
-                <button
-                  type="button"
-                  onClick={handleBackToEdit}
-                  className="btn-secondary flex-1"
-                >
-                  編集に戻る
-                </button>
-                
-                <button
-                  type="submit"
-                  disabled={isProcessing}
-                  className="btn-primary flex-1"
-                >
-                  {isProcessing ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      送信中...
-                    </>
-                  ) : (
-                    <>
-                      <Send className="mr-2 h-5 w-5" />
-                      {isTestMode ? 'テスト送信' : 'スタート'}
-                    </>
-                  )}
-                </button>
-              </div>
-            ) : (
-              <button
-                type="submit"
-                disabled={isProcessing || !file || parsedData.length === 0 || (previewTemplate && characterCount > characterLimit) || (isTestMode && !testRecipient) || (hasInternationalNumbers && !canUseInternational)}
-                className="btn-primary w-full"
-              >
-                <FileCheck className="mr-2 h-5 w-5" />
-                確認
-              </button>
-            )}
-          </motion.div>
         </motion.div>
       </form>
     </motion.div>

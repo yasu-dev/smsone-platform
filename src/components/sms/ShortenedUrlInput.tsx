@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link2, Lock, Info, Plus, X, ExternalLink, FileCode, Copy, AlertCircle } from 'lucide-react';
+import { Link2, Lock, Info, ExternalLink, FileCode, Copy, AlertCircle } from 'lucide-react';
 import useShortenedUrlStore from '../../store/shortenedUrlStore';
 import toast from 'react-hot-toast';
 
@@ -121,55 +121,42 @@ const ShortenedUrlInput: React.FC<ShortenedUrlInputProps> = ({
   return (
     <div className="space-y-4">
       <div>
-        <label htmlFor={`original-url-${urlIndex}`} className="form-label">
+        <label htmlFor={`original-url-${urlIndex}`} className="form-label flex items-center">
+          <Link2 className="h-4 w-4 mr-1" />
           短縮元URL {urlIndex > 1 ? urlIndex : ''}
         </label>
         
-        <div className="flex">
-          <div className="relative flex-grow">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Link2 className="h-5 w-5 text-grey-400" />
-            </div>
-            <input
-              type="url"
-              id={`original-url-${urlIndex}`}
-              value={originalUrl}
-              onChange={(e) => setOriginalUrl(e.target.value)}
-              placeholder="https://example.com/page"
-              className={`form-input pl-10 pr-20 ${urlError ? 'border-error-300 focus:border-error-500 focus:ring-error-500' : ''}`}
-              disabled={disabled}
-            />
-            {hasAccessCodeFeature && !disabled && (
-              <button
-                type="button"
-                onClick={() => setShowAccessCodeInput(!showAccessCodeInput)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-grey-400 hover:text-grey-600"
-                title="アクセスコードを設定"
-                disabled={disabled}
-              >
-                <Lock className="h-5 w-5" />
-              </button>
-            )}
-          </div>
-          
-          <button
-            type="button"
-            onClick={handleShortenUrl}
-            disabled={isLoading || !originalUrl.trim() || disabled}
-            className="ml-2 btn-secondary whitespace-nowrap"
-          >
-            短縮URL生成
-          </button>
-          
-          <button
-            type="button"
-            onClick={handleInsertTag}
-            className="ml-2 btn-secondary whitespace-nowrap"
-            title={`本文に${tagText}タグを挿入`}
+        <div className="flex mt-1">
+          <input
+            type="url"
+            id={`original-url-${urlIndex}`}
+            value={originalUrl}
+            onChange={(e) => setOriginalUrl(e.target.value)}
+            placeholder="https://example.com/page"
+            className={`form-input flex-grow ${urlError ? 'border-error-300 focus:border-error-500 focus:ring-error-500' : ''}`}
             disabled={disabled}
-          >
-            {tagText}挿入
-          </button>
+          />
+          
+          <div className="flex ml-2">
+            <button
+              type="button"
+              onClick={handleShortenUrl}
+              disabled={isLoading || !originalUrl.trim() || disabled}
+              className="btn-secondary whitespace-nowrap"
+            >
+              短縮URL生成
+            </button>
+            
+            <button
+              type="button"
+              onClick={handleInsertTag}
+              className="btn-secondary whitespace-nowrap ml-2"
+              title={`本文に${tagText}タグを挿入`}
+              disabled={disabled}
+            >
+              挿入
+            </button>
+          </div>
         </div>
         
         {urlError && (
@@ -178,57 +165,7 @@ const ShortenedUrlInput: React.FC<ShortenedUrlInputProps> = ({
             {urlError}
           </p>
         )}
-        
-        {!urlError && (
-          <p className="mt-1 text-xs text-grey-500">
-            短縮元URLの最大文字数は2083文字です。本文に{tagText}タグを挿入することで、生成された短縮URLが表示されます。
-          </p>
-        )}
       </div>
-      
-      {/* アクセスコード入力 */}
-      {showAccessCodeInput && hasAccessCodeFeature && !disabled && (
-        <div className="p-3 border border-grey-200 rounded-md bg-grey-50">
-          <div className="flex justify-between items-center mb-2">
-            <label htmlFor={`access-code-${urlIndex}`} className="text-sm font-medium text-grey-700">
-              アクセスコード設定
-            </label>
-            <button
-              type="button"
-              onClick={() => setShowAccessCodeInput(false)}
-              className="text-grey-400 hover:text-grey-600"
-              disabled={disabled}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          
-          <div className="flex">
-            <input
-              type="text"
-              id={`access-code-${urlIndex}`}
-              value={accessCode}
-              onChange={(e) => setAccessCode(e.target.value)}
-              placeholder="英数字 1～20文字"
-              className="form-input flex-grow"
-              maxLength={20}
-              disabled={disabled}
-            />
-            <button
-              type="button"
-              onClick={handleSaveAccessCode}
-              className="ml-2 btn-primary"
-              disabled={disabled}
-            >
-              保存
-            </button>
-          </div>
-          
-          <p className="mt-1 text-xs text-grey-500">
-            URLにアクセスする際に必要なパスワードを設定できます。英数字と一部の特殊文字が使用可能です。
-          </p>
-        </div>
-      )}
       
       {/* 短縮URL結果表示 */}
       {isUrlProcessed && shortenedUrl && (
@@ -264,14 +201,49 @@ const ShortenedUrlInput: React.FC<ShortenedUrlInputProps> = ({
           <p className="text-sm text-primary-600 font-mono bg-white p-2 rounded border border-grey-200">
             {shortenedUrl}
           </p>
+        </div>
+      )}
+      
+      {/* アクセスコード設定オプション（折りたたみ） */}
+      {hasAccessCodeFeature && !disabled && (
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() => setShowAccessCodeInput(!showAccessCodeInput)}
+            className="text-sm text-grey-600 hover:text-grey-800 flex items-center"
+          >
+            <Lock className="h-3 w-3 mr-1" />
+            {showAccessCodeInput ? 'アクセスコードを隠す' : 'アクセスコードを設定'}
+          </button>
           
-          <div className="mt-2 text-xs text-grey-600 flex items-start">
-            <Info className="h-4 w-4 text-grey-400 mr-1 flex-shrink-0 mt-0.5" />
-            <p>
-              HTTPの場合は19文字、HTTPSの場合は20文字に短縮されます。auの場合は19バイト換算です。{' '}
-              {accessCode && <span className="text-warning-600">このURLにはアクセスコードが設定されています。</span>}
-            </p>
-          </div>
+          {showAccessCodeInput && (
+            <div className="mt-2 p-3 border border-grey-200 rounded-md bg-grey-50">
+              <label htmlFor={`access-code-${urlIndex}`} className="block text-sm font-medium text-grey-700 mb-1">
+                アクセスコード
+              </label>
+              
+              <div className="flex">
+                <input
+                  type="text"
+                  id={`access-code-${urlIndex}`}
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  placeholder="英数字 1～20文字"
+                  className="form-input flex-grow"
+                  maxLength={20}
+                  disabled={disabled}
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveAccessCode}
+                  className="ml-2 btn-primary"
+                  disabled={disabled}
+                >
+                  保存
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

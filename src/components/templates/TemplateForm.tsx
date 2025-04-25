@@ -4,6 +4,7 @@ import { X, Save, AlertCircle, Tag, Plus } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useTemplateStore from '../../store/templateStore';
 import { Template } from '../../types';
+import TagHighlighter from '../ui/TagHighlighter';
 
 interface TemplateFormProps {
   template?: Template;
@@ -153,7 +154,7 @@ const TemplateForm: React.FC<TemplateFormProps> = ({ template, onClose }) => {
                     value={content}
                     onChange={(e) => setContent(e.target.value)}
                     className={`form-input ${errors.content ? 'border-error-300 focus:border-error-500 focus:ring-error-500' : ''}`}
-                    placeholder="メッセージ本文を入力してください。{info1}のような動的タグを使用できます。"
+                    placeholder="メッセージ本文を入力してください。{お客様の名前を入力}のような動的タグを使用できます。"
                   />
                 </div>
                 {errors.content ? (
@@ -161,7 +162,7 @@ const TemplateForm: React.FC<TemplateFormProps> = ({ template, onClose }) => {
                 ) : (
                   <div className="mt-1 text-sm text-grey-500 flex justify-between">
                     <p>
-                      動的タグ例: {'{info1}'}, {'{info2}'}, {'{info3}'} をタグとして使用できます
+                      動的タグ例: {'{お客様の名前を入力}'}, {'{注文番号を入力}'}, {'{予約日時を入力}'} をタグとして使用できます
                     </p>
                     <p>
                       文字数: {characterCount} / 70文字
@@ -175,6 +176,18 @@ const TemplateForm: React.FC<TemplateFormProps> = ({ template, onClose }) => {
                   </div>
                 )}
               </div>
+              
+              {content && (
+                <div className="mt-4 p-3 border border-grey-100 rounded-md bg-grey-50">
+                  <p className="text-xs text-grey-500 mb-1">プレビュー:</p>
+                  <div className="text-sm text-grey-800 whitespace-pre-wrap">
+                    <TagHighlighter 
+                      text={content} 
+                      interactive={false}
+                    />
+                  </div>
+                </div>
+              )}
               
               <div>
                 <label htmlFor="description" className="form-label">

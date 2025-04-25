@@ -1,26 +1,61 @@
-import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
-  Menu, X, User, LogOut, ChevronDown, Bell, 
-  LayoutDashboard, Mail, FileText, Settings, Users, History, Link2 
+  Menu, X, User, LogOut, ChevronDown, Bell
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Logo from '../ui/Logo';
 import useAuthStore from '../../store/authStore';
+import Logo from '../ui/Logo';
 
-const Navbar: React.FC = () => {
+interface NavbarProps {
+  onMobileMenuToggle?: () => void;
+}
+
+const Navbar: React.FC<NavbarProps> = ({ onMobileMenuToggle }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const location = useLocation();
   const { user, logout } = useAuthStore();
+  const navigate = useNavigate();
+  
+  // Refs for dropdown containers
+  const notificationsRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
-  const isActive = (path: string) => {
-    return location.pathname === path;
-  };
+  // Handle clicks outside of dropdown menus
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      // Close notifications dropdown if click is outside
+      if (notificationsOpen && 
+          notificationsRef.current && 
+          !notificationsRef.current.contains(event.target as Node)) {
+        setNotificationsOpen(false);
+      }
+      
+      // Close profile menu dropdown if click is outside
+      if (profileMenuOpen && 
+          profileMenuRef.current && 
+          !profileMenuRef.current.contains(event.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    };
+
+    // Add event listener when dropdowns are open
+    if (notificationsOpen || profileMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    
+    // Cleanup event listener
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [notificationsOpen, profileMenuOpen]);
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen);
+    if (onMobileMenuToggle) {
+      onMobileMenuToggle();
+    }
   };
 
   const toggleNotifications = () => {
@@ -37,64 +72,35 @@ const Navbar: React.FC = () => {
     logout();
   };
 
-  const navigation = [
-    { name: 'ダッシュボード', href: '/', icon: <LayoutDashboard className="h-5 w-5" /> },
-    { name: 'SMS送信', href: '/send', icon: <Mail className="h-5 w-5" /> },
-    { name: '送信履歴', href: '/history', icon: <History className="h-5 w-5" /> },
-    { name: 'テンプレート', href: '/templates', icon: <FileText className="h-5 w-5" /> },
-  ];
-  
   // URL短縮ツールへのリンク - 表示はされないが機能は維持
   const hiddenNavigation = [
-    { name: 'URL短縮ツール', href: '/shortener', icon: <Link2 className="h-5 w-5" /> },
+    { name: 'URL短縮ツール', href: '/shortener' },
   ];
-
-  // Admin-only menu items
-  const adminNavigation = user?.role === 'admin' ? [
-    { name: 'ユーザー管理', href: '/users', icon: <Users className="h-5 w-5" /> },
-    { name: '設定', href: '/settings', icon: <Settings className="h-5 w-5" /> },
-  ] : [];
-
-  // Combine regular and admin navigation
-  const fullNavigation = [...navigation, ...adminNavigation];
 
   // Mock notifications for the demo
   const notifications = [
-    { id: 1, text: 'CSV一括送信が完了しました', time: '5分前' },
-    { id: 2, text: 'システムメンテナンスのお知らせ', time: '1時間前' },
-    { id: 3, text: '新機能が追加されました', time: '1日前' },
+    { id: 1, text: 'CSV一括送信が完了しました', time: '5分前', link: '/history' },
+    { id: 2, text: 'システムメンテナンスのお知らせ', time: '1時間前', link: '/dashboard' },
+    { id: 3, text: '新機能が追加されました', time: '1日前', link: '/dashboard' },
   ];
+
+  const handleNotificationClick = (link: string) => {
+    navigate(link);
+    setNotificationsOpen(false);
+  };
 
   return (
     <nav className="bg-white shadow-sm">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 justify-between">
-          <div className="flex">
-            <div className="flex flex-shrink-0 items-center">
-              <Link to="/">
-                <Logo size="md" />
-              </Link>
-            </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {fullNavigation.map((item) => (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`inline-flex items-center px-1 pt-1 text-sm font-medium ${
-                    isActive(item.href)
-                      ? 'border-b-2 border-primary-500 text-grey-900'
-                      : 'border-b-2 border-transparent text-grey-500 hover:border-grey-300 hover:text-grey-700'
-                  }`}
-                >
-                  <span className="mr-1">{item.icon}</span>
-                  {item.name}
-                </Link>
-              ))}
-            </div>
+      <div className="px-4 sm:px-6 lg:px-8">
+        <div className="flex h-16 justify-between items-center">
+          <div className="flex-none">
+            <Link to="/">
+              <Logo size="lg" />
+            </Link>
           </div>
-          <div className="hidden sm:ml-6 sm:flex sm:items-center">
+          <div className="hidden sm:flex sm:items-center">
             {/* Notifications dropdown */}
-            <div className="relative ml-3">
+            <div className="relative ml-3" ref={notificationsRef}>
               <button
                 type="button"
                 className="relative rounded-full bg-white p-1 text-grey-400 hover:text-grey-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
@@ -122,7 +128,8 @@ const Navbar: React.FC = () => {
                       {notifications.map((notification) => (
                         <div
                           key={notification.id}
-                          className="px-4 py-3 hover:bg-grey-50 border-b border-grey-100 last:border-b-0"
+                          className="px-4 py-3 hover:bg-grey-50 border-b border-grey-100 last:border-b-0 cursor-pointer"
+                          onClick={() => handleNotificationClick(notification.link)}
                         >
                           <p className="text-sm text-grey-700">{notification.text}</p>
                           <p className="text-xs text-grey-500 mt-1">{notification.time}</p>
@@ -133,6 +140,7 @@ const Navbar: React.FC = () => {
                       <Link
                         to="/notifications"
                         className="block text-center text-sm text-primary-600 hover:text-primary-700"
+                        onClick={() => setNotificationsOpen(false)}
                       >
                         すべての通知を見る
                       </Link>
@@ -143,7 +151,7 @@ const Navbar: React.FC = () => {
             </div>
 
             {/* Profile dropdown */}
-            <div className="relative ml-3">
+            <div className="relative ml-3" ref={profileMenuRef}>
               <div>
                 <button
                   type="button"
@@ -203,6 +211,7 @@ const Navbar: React.FC = () => {
               type="button"
               className="inline-flex items-center justify-center rounded-md p-2 text-grey-400 hover:bg-grey-100 hover:text-grey-500 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
               onClick={toggleMobileMenu}
+              aria-expanded={mobileMenuOpen}
             >
               {mobileMenuOpen ? (
                 <X className="h-6 w-6" aria-hidden="true" />
@@ -224,25 +233,6 @@ const Navbar: React.FC = () => {
             transition={{ duration: 0.2 }}
             className="sm:hidden"
           >
-            <div className="space-y-1 pb-3 pt-2">
-              {fullNavigation.map((item) => (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={`block border-l-4 py-2 pl-3 pr-4 text-base font-medium leading-5 ${
-                    isActive(item.href)
-                      ? 'border-primary-500 bg-primary-50 text-primary-700'
-                      : 'border-transparent text-grey-500 hover:border-grey-300 hover:bg-grey-50 hover:text-grey-700'
-                  }`}
-                  onClick={() => setMobileMenuOpen(false)}
-                >
-                  <div className="flex items-center">
-                    <span className="mr-2">{item.icon}</span>
-                    {item.name}
-                  </div>
-                </Link>
-              ))}
-            </div>
             <div className="border-t border-grey-200 pb-3 pt-4">
               <div className="flex items-center px-4">
                 <div className="flex-shrink-0">
@@ -251,41 +241,32 @@ const Navbar: React.FC = () => {
                   </div>
                 </div>
                 <div className="ml-3">
-                  <div className="text-base font-medium text-grey-800">
-                    {user?.username}
-                  </div>
-                  <div className="text-sm font-medium text-grey-500">
-                    {user?.email}
-                  </div>
+                  <div className="text-base font-medium text-grey-800">{user?.username}</div>
+                  <div className="text-sm font-medium text-grey-500">{user?.email}</div>
                 </div>
-                <button
-                  type="button"
-                  className="ml-auto flex-shrink-0 rounded-full bg-white p-1 text-grey-400 hover:text-grey-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
-                  onClick={toggleNotifications}
-                >
-                  <span className="absolute flex h-3 w-3 items-center justify-center">
-                    <span className="absolute inline-flex h-full w-full rounded-full bg-error-500 opacity-75 animate-ping"></span>
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-error-500"></span>
-                  </span>
-                  <Bell className="h-6 w-6" />
-                </button>
               </div>
               <div className="mt-3 space-y-1">
                 <Link
                   to="/profile"
-                  className="block px-4 py-2 text-base font-medium text-grey-500 hover:bg-grey-100 hover:text-grey-800"
+                  className="block px-4 py-2 text-base font-medium text-grey-700 hover:bg-grey-50"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  プロフィール
+                  <div className="flex items-center">
+                    <User className="mr-2 h-5 w-5 text-grey-500" />
+                    プロフィール
+                  </div>
                 </Link>
                 <button
                   onClick={() => {
                     handleLogout();
                     setMobileMenuOpen(false);
                   }}
-                  className="block w-full text-left px-4 py-2 text-base font-medium text-grey-500 hover:bg-grey-100 hover:text-grey-800"
+                  className="block w-full text-left px-4 py-2 text-base font-medium text-grey-700 hover:bg-grey-50"
                 >
-                  ログアウト
+                  <div className="flex items-center">
+                    <LogOut className="mr-2 h-5 w-5 text-grey-500" />
+                    ログアウト
+                  </div>
                 </button>
               </div>
             </div>

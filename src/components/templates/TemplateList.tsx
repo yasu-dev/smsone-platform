@@ -5,6 +5,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import useTemplateStore from '../../store/templateStore';
 import { Template } from '../../types';
+import TagHighlighter from '../ui/TagHighlighter';
 
 interface TemplateListProps {
   onSelectTemplate?: (template: Template) => void;
@@ -221,7 +222,9 @@ const TemplateList: React.FC<TemplateListProps> = ({
                       </button>
                     </div>
                   </div>
-                  <p className="text-sm text-grey-600 line-clamp-3">{template.content}</p>
+                  <p className="text-sm text-grey-600 line-clamp-3">
+                    <TagHighlighter text={template.content} interactive={false} />
+                  </p>
                   
                   {template.tags && template.tags.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-1">
@@ -291,7 +294,9 @@ const TemplateList: React.FC<TemplateListProps> = ({
                       </div>
                     </td>
                     <td className="px-6 py-4">
-                      <div className="text-sm text-grey-500 max-w-xs truncate">{template.content}</div>
+                      <div className="text-sm text-grey-500 max-w-xs truncate">
+                        <TagHighlighter text={template.content} interactive={false} />
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-grey-500">
                       {new Date(template.updatedAt).toLocaleDateString('ja-JP')}

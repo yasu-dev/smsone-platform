@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, Send, FileText, Clock, ShieldCheck, FileCheck, Globe } from 'lucide-react';
+import { AlertCircle, Send, FileText, Clock, ShieldCheck, FileCheck, Globe, PencilLine, ChevronRight, Settings, Link, MessageSquare } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useTemplateStore from '../../store/templateStore';
 import useSMSStore from '../../store/smsStore';
@@ -8,10 +8,25 @@ import useAuthStore from '../../store/authStore';
 import { Template } from '../../types';
 import SenderNumberSelect from './SenderNumberSelect';
 import ShortenedUrlInput from './ShortenedUrlInput';
+import SurveyTagInput from './SurveyTagInput';
 import PhoneNumberInput from './PhoneNumberInput';
 import { calculateSMSLength, calculateSMSMessageCount, isSMSLengthExceeded, SMS_CHARACTER_LIMITS } from '../../utils/smsUtils';
+import TagHighlighter from '../ui/TagHighlighter';
+import useSenderNumberStore from '../../store/senderNumberStore';
+
+// 送信ステップを定義
+enum SendStep {
+  RECIPIENT = 0,
+  CONTENT = 1,
+  OPTIONS = 2,
+  CONFIRM = 3,
+}
 
 const IndividualSendForm: React.FC = () => {
+  // 送信ステップの状態
+  const [currentStep, setCurrentStep] = useState<SendStep>(SendStep.RECIPIENT);
+
+  // 既存の状態
   const [recipient, setRecipient] = useState('');
   const [isInternational, setIsInternational] = useState(false);
   const [countryCode, setCountryCode] = useState<string | undefined>(undefined);
@@ -20,9 +35,8 @@ const IndividualSendForm: React.FC = () => {
   const [showTemplates, setShowTemplates] = useState(false);
   const [characterCount, setCharacterCount] = useState(0);
   const [messageCount, setMessageCount] = useState(0);
-  const [isLongSMSEnabled, setIsLongSMSEnabled] = useState(false);
+  const isLongSMSEnabled = true;
   const [isSending, setIsSending] = useState(false);
-  const [isConfirmMode, setIsConfirmMode] = useState(false);
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledDate, setScheduledDate] = useState('');
   const [scheduledTime, setScheduledTime] = useState('');
@@ -32,13 +46,11 @@ const IndividualSendForm: React.FC = () => {
   const [testRecipient, setTestRecipient] = useState('');
   const [isTestMode, setIsTestMode] = useState(false);
   const [urlTagIndex, setUrlTagIndex] = useState(1);
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
   
   const { templates, fetchTemplates, isLoading: isLoadingTemplates } = useTemplateStore();
   const { sendMessage, sendTestMessage } = useSMSStore();
   const { hasPermission } = useAuthStore();
-  
-  // 海外送信権限チェック
-  const canUseInternational = hasPermission('internationalSms');
   
   // Fetch templates on mount
   useEffect(() => {
@@ -68,6 +80,110 @@ const IndividualSendForm: React.FC = () => {
     }
   }, [content, isLongSMSEnabled]);
 
+  // 次のステップに進む関数
+  const goToNextStep = () => {
+    if (currentStep < SendStep.CONFIRM) {
+      setCurrentStep(currentStep + 1);
+    }
+  };
+
+  // 前のステップに戻る関数
+  const goToPreviousStep = () => {
+    if (currentStep > SendStep.RECIPIENT) {
+      setCurrentStep(currentStep - 1);
+    }
+  };
+
+  // 特定のステップに直接ジャンプする関数
+  const goToStep = (step: SendStep) => {
+    setCurrentStep(step);
+  };
+
+  // 送信先ステップのバリデーション
+  const validateRecipientStep = () => {
+    if (!isTestMode && !recipient) {
+      toast.error('宛先を入力してください');
+      return false;
+    }
+    
+    if (isTestMode && !testRecipient) {
+      toast.error('テスト送信用携帯番号を入力してください');
+      return false;
+    }
+
+    if (!senderNumber) {
+      toast.error('送信者名を選択してください');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // 本文ステップのバリデーション
+  const validateContentStep = () => {
+    if (!content) {
+      toast.error('本文を入力してください');
+      return false;
+    }
+    
+    // 正規表現で{URL}タグがあるかチェック（数字付きも含む）
+    const hasUrlTags = /{URL\d*}/.test(content);
+    
+    // 本文に{URL}タグがあるのに短縮元URLが設定されていない場合
+    if (hasUrlTags && !originalUrl) {
+      toast.error('本文に{URL}タグがありますが、短縮元URLが設定されていません');
+      return false;
+    }
+    
+    // 文字数制限チェック
+    if (isSMSLengthExceeded(content, { enableLongSMS: isLongSMSEnabled })) {
+      const limit = 660; // 文字数制限を660文字に統一
+      toast.error(`文字数制限(${limit}文字)を超えています`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  // オプションステップのバリデーション
+  const validateOptionsStep = () => {
+    // 送信予約が有効で日時が未入力の場合
+    if (isScheduled && (!scheduledDate || !scheduledTime)) {
+      toast.error('予約送信の日時を入力してください');
+      return false;
+    }
+    
+    return true;
+  };
+
+  // 各ステップを検証してから次へ進む
+  const validateAndProceed = () => {
+    let isValid = false;
+    
+    switch (currentStep) {
+      case SendStep.RECIPIENT:
+        isValid = validateRecipientStep();
+        break;
+      case SendStep.CONTENT:
+        isValid = validateContentStep();
+        break;
+      case SendStep.OPTIONS:
+        isValid = validateOptionsStep();
+        break;
+      default:
+        isValid = true;
+    }
+    
+    if (isValid) {
+      if (currentStep === SendStep.OPTIONS) {
+        // オプションステップから確認ステップへ
+        goToStep(SendStep.CONFIRM);
+      } else {
+        goToNextStep();
+      }
+    }
+  };
+
   const handleTemplateSelect = (template: Template) => {
     setContent(template.content);
     setSelectedTemplate(template.id);
@@ -88,58 +204,25 @@ const IndividualSendForm: React.FC = () => {
 
   // 確認モードに移行
   const handleConfirm = () => {
-    if (!validateForm()) return;
-    setIsConfirmMode(true);
+    if (!validateRecipientStep() || !validateContentStep() || !validateOptionsStep()) return;
+    goToStep(SendStep.CONFIRM);
   };
   
   // フォーム検証
   const validateForm = () => {
-    if (!recipient && !isTestMode) {
-      toast.error('宛先を入力してください');
-      return false;
-    }
-    
-    if (isTestMode && !testRecipient) {
-      toast.error('テスト送信用携帯番号を入力してください');
-      return false;
-    }
-    
-    if (!content) {
-      toast.error('本文を入力してください');
-      return false;
-    }
-    
-    // 正規表現で{URL}タグがあるかチェック（数字付きも含む）
-    const hasUrlTags = /{URL\d*}/.test(content);
-    
-    // 本文に{URL}タグがあるのに短縮元URLが設定されていない場合
-    if (hasUrlTags && !originalUrl) {
-      toast.error('本文に{URL}タグがありますが、短縮元URLが設定されていません');
-      return false;
-    }
-    
-    // 文字数制限チェック
-    if (isSMSLengthExceeded(content, { enableLongSMS: isLongSMSEnabled })) {
-      const limit = isLongSMSEnabled 
-        ? (senderNumber.startsWith('090') ? SMS_CHARACTER_LIMITS.DOCOMO_LONG : SMS_CHARACTER_LIMITS.OTHER_LONG)
-        : SMS_CHARACTER_LIMITS.STANDARD;
-      toast.error(`文字数制限(${limit}文字)を超えています`);
-      return false;
-    }
-    
-    return true;
+    return validateRecipientStep() && validateContentStep() && validateOptionsStep();
   };
 
   // 編集モードに戻る
   const handleBackToEdit = () => {
-    setIsConfirmMode(false);
+    goToStep(SendStep.RECIPIENT);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!isConfirmMode) {
-      handleConfirm();
+    if (currentStep !== SendStep.CONFIRM) {
+      validateAndProceed();
       return;
     }
     
@@ -150,6 +233,9 @@ const IndividualSendForm: React.FC = () => {
     setIsSending(true);
     
     try {
+      // 予約日時がある場合はメモに追加
+      const scheduledDateString = isScheduled ? `予約送信: ${scheduledDate} ${scheduledTime}` : undefined;
+      
       if (isTestMode) {
         // テスト送信
         await sendTestMessage({
@@ -159,7 +245,8 @@ const IndividualSendForm: React.FC = () => {
           templateId: selectedTemplate || undefined,
           originalUrl: originalUrl || undefined,
           isInternational,
-          countryCode
+          countryCode,
+          memo: scheduledDateString
         });
         toast.success(`テスト送信を完了しました`);
       } else {
@@ -171,7 +258,8 @@ const IndividualSendForm: React.FC = () => {
           templateId: selectedTemplate || undefined,
           originalUrl: originalUrl || undefined,
           isInternational,
-          countryCode
+          countryCode,
+          memo: scheduledDateString
         });
         toast.success('メッセージを送信しました');
       }
@@ -191,7 +279,7 @@ const IndividualSendForm: React.FC = () => {
     setRecipient('');
     setContent('');
     setSelectedTemplate('');
-    setIsConfirmMode(false);
+    setCurrentStep(SendStep.RECIPIENT);
     setIsScheduled(false);
     setScheduledDate('');
     setScheduledTime('');
@@ -201,10 +289,22 @@ const IndividualSendForm: React.FC = () => {
     setIsInternational(false);
     setCountryCode(undefined);
     setUrlTagIndex(1);
+    setShowAdvancedOptions(false);
   };
 
   const handleSenderNumberChange = (number: string) => {
     setSenderNumber(number);
+    
+    // 送信者名が国際送信対応かチェック
+    const selectedSender = useSenderNumberStore.getState().senderNumbers.find(sn => sn.number === number);
+    if (selectedSender && selectedSender.isInternational) {
+      // 国際送信対応の送信者名が選択された場合、国際送信モードを有効化
+      setIsInternational(true);
+    } else {
+      // 通常の電話番号が選択された場合は国際送信モードを無効化
+      setIsInternational(false);
+      setCountryCode(undefined);
+    }
   };
   
   const handleOriginalUrlUpdate = (url: string) => {
@@ -241,15 +341,15 @@ const IndividualSendForm: React.FC = () => {
   // テスト送信モードを切り替え
   const toggleTestMode = () => {
     setIsTestMode(!isTestMode);
-    if (isConfirmMode) {
-      setIsConfirmMode(false);
-    }
+  };
+
+  // 高度なオプションの表示/非表示を切り替え
+  const toggleAdvancedOptions = () => {
+    setShowAdvancedOptions(!showAdvancedOptions);
   };
 
   // 文字数制限値
-  const characterLimit = isLongSMSEnabled 
-    ? (senderNumber.startsWith('090') ? SMS_CHARACTER_LIMITS.DOCOMO_LONG : SMS_CHARACTER_LIMITS.OTHER_LONG)
-    : SMS_CHARACTER_LIMITS.STANDARD;
+  const characterLimit = 660; // 文字数制限を660文字に統一
 
   // Animation variants
   const container = {
@@ -267,6 +367,56 @@ const IndividualSendForm: React.FC = () => {
     show: { y: 0, opacity: 1 }
   };
 
+  // ステップインジケーターを描画する関数
+  const renderStepIndicator = () => {
+    return (
+      <div className="mb-6">
+        <div className="flex items-center justify-between">
+          {Object.values(SendStep).filter(v => typeof v === 'number').map((step) => (
+            <div 
+              key={step} 
+              className={`flex items-center ${Number(step) < currentStep ? 'cursor-pointer' : ''}`}
+              onClick={() => Number(step) < currentStep && goToStep(step as SendStep)}
+            >
+              <div 
+                className={`flex items-center justify-center w-8 h-8 rounded-full font-medium text-sm
+                  ${currentStep === step 
+                    ? 'bg-primary-600 text-white' 
+                    : Number(step) < currentStep 
+                      ? 'bg-primary-100 text-primary-600 border border-primary-300' 
+                      : 'bg-grey-100 text-grey-500 border border-grey-300'
+                  }`}
+              >
+                {Number(step) + 1}
+              </div>
+              <span 
+                className={`ml-2 text-sm font-medium 
+                  ${currentStep === step 
+                    ? 'text-primary-600' 
+                    : Number(step) < currentStep 
+                      ? 'text-primary-500' 
+                      : 'text-grey-500'
+                  }`}
+              >
+                {step === SendStep.RECIPIENT && '宛先'}
+                {step === SendStep.CONTENT && '本文'}
+                {step === SendStep.OPTIONS && 'オプション'}
+                {step === SendStep.CONFIRM && '確認'}
+              </span>
+            </div>
+          ))}
+        </div>
+        <div className="relative mt-1">
+          <div className="absolute top-0 left-4 right-4 h-1 bg-grey-200"></div>
+          <div 
+            className="absolute top-0 left-4 h-1 bg-primary-500 transition-all duration-300"
+            style={{ width: `${(currentStep / (Object.keys(SendStep).length / 2 - 1)) * 100}%` }}
+          ></div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <motion.div 
       className="card"
@@ -277,263 +427,321 @@ const IndividualSendForm: React.FC = () => {
       <div className="mb-5">
         <h2 className="text-lg font-medium text-grey-900">個別送信</h2>
         <p className="mt-1 text-sm text-grey-500">
-          電話番号と本文を入力して個別にSMSを送信します。テンプレートを使用することもできます。
+          送信者名と本文を入力して個別にSMSを送信します。
         </p>
       </div>
 
-      <form onSubmit={handleSubmit}>
+      {renderStepIndicator()}
+
+      <form onSubmit={handleSubmit} className="mt-6">
         <motion.div className="space-y-6" variants={container}>
-          <motion.div variants={item}>
-            <div className="flex items-center mb-4">
-              <label className="inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={isTestMode}
-                  onChange={toggleTestMode}
-                  className="form-checkbox"
+          {/* ステップ1: 送信先設定 */}
+          {currentStep === SendStep.RECIPIENT && (
+            <>
+              <motion.div variants={item}>
+                <div className="flex items-center mb-4">
+                  <label className="inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isTestMode}
+                      onChange={toggleTestMode}
+                      className="form-checkbox"
+                    />
+                    <span className="ml-2 text-sm font-medium text-grey-700">テスト送信モード</span>
+                  </label>
+                  <div className="ml-2 text-sm text-grey-500">
+                    {isTestMode ? '実際には送信せず、テスト用携帯番号にのみ送信します' : null}
+                  </div>
+                </div>
+              </motion.div>
+
+              <motion.div variants={item}>
+                <SenderNumberSelect 
+                  onChange={handleSenderNumberChange}
+                  initialSenderNumber={senderNumber}
+                  disabled={false}
                 />
-                <span className="ml-2 text-sm font-medium text-grey-700">テスト送信モード</span>
-              </label>
-              <div className="ml-4 text-sm text-grey-500">
-                {isTestMode ? '実際には送信せず、テスト用携帯番号にのみ送信します' : '通常の送信モードです'}
-              </div>
-            </div>
-          </motion.div>
-
-          {isTestMode ? (
-            <motion.div variants={item}>
-              <label htmlFor="test-recipient" className="form-label flex items-center">
-                テスト送信用携帯番号 <span className="text-error-500 ml-1">*</span>
-              </label>
-              <div className="mt-1">
-                {canUseInternational ? (
-                  <PhoneNumberInput
-                    value={testRecipient}
-                    onChange={(value, isIntl, code) => {
-                      setTestRecipient(value);
-                      setIsInternational(isIntl);
-                      setCountryCode(code);
-                    }}
-                    placeholder="例: 09012345678"
-                    disabled={isConfirmMode}
-                    required
-                  />
-                ) : (
-                  <input
-                    type="tel"
-                    id="test-recipient"
-                    value={testRecipient}
-                    onChange={(e) => setTestRecipient(e.target.value)}
-                    placeholder="例: 09012345678"
-                    className="form-input"
-                    disabled={isConfirmMode}
-                    required
-                  />
-                )}
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div variants={item}>
-              <label htmlFor="recipient" className="form-label">
-                宛先（電話番号）{canUseInternational && <span className="ml-2 text-xs text-primary-600">国際送信対応</span>}
-              </label>
-              <div className="mt-1">
-                {canUseInternational ? (
-                  <PhoneNumberInput
-                    value={recipient}
-                    onChange={handlePhoneNumberChange}
-                    placeholder="例: 09012345678"
-                    disabled={isConfirmMode}
-                  />
-                ) : (
-                  <input
-                    type="tel"
-                    id="recipient"
-                    value={recipient}
-                    onChange={(e) => setRecipient(e.target.value)}
-                    placeholder="例: 09012345678"
-                    className="form-input"
-                    disabled={isConfirmMode}
-                  />
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          <motion.div variants={item}>
-            <SenderNumberSelect 
-              onChange={handleSenderNumberChange}
-              disabled={isConfirmMode}
-            />
-          </motion.div>
-          
-          <motion.div variants={item}>
-            <ShortenedUrlInput 
-              onUpdate={handleOriginalUrlUpdate}
-              onInsertTag={handleInsertTag}
-              initialUrl={originalUrl}
-              showMultipleUrls={multipleUrlsEnabled}
-              urlIndex={urlTagIndex}
-              disabled={isConfirmMode}
-            />
-          </motion.div>
-
-          <motion.div variants={item}>
-            <div className="flex items-center justify-between">
-              <label htmlFor="content" className="form-label">
-                本文
-              </label>
-              <div className="flex items-center">
-                <button
-                  type="button"
-                  onClick={() => setShowTemplates(!showTemplates)}
-                  className="inline-flex items-center text-primary-600 hover:text-primary-500 text-sm"
-                  disabled={isConfirmMode}
-                >
-                  <FileText className="h-4 w-4 mr-1" />
-                  テンプレートを使用
-                </button>
-              </div>
-            </div>
-            <div className="mt-1">
-              <textarea
-                id="content"
-                rows={5}
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                placeholder="メッセージを入力してください。{info1}のような動的タグや{URL1}、{URL2}などのタグを使用できます。"
-                className="form-input"
-                disabled={isConfirmMode}
-              />
-            </div>
-            <div className="mt-2 flex justify-between items-center">
-              <div className="text-sm text-grey-500 flex items-center">
-                <span className={characterCount > characterLimit ? 'text-error-600' : ''}>
-                  文字数: {characterCount} / {characterLimit}文字
-                </span>
-                {messageCount > 1 && (
-                  <span className="ml-2 px-2 py-0.5 bg-grey-100 rounded-full text-xs">
-                    {messageCount}通分
-                  </span>
-                )}
-                {characterCount > characterLimit && (
-                  <span className="text-error-600 ml-2 flex items-center">
-                    <AlertCircle className="h-4 w-4 mr-1" />
-                    制限を超えています
-                  </span>
-                )}
-              </div>
+              </motion.div>
               
-              <div className="flex items-center">
-                <label className="inline-flex items-center text-sm mr-4 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isLongSMSEnabled}
-                    onChange={() => setIsLongSMSEnabled(!isLongSMSEnabled)}
-                    className="form-checkbox mr-2 h-4 w-4"
-                    disabled={isConfirmMode}
-                  />
-                  長文SMS
-                </label>
-                
+              {isTestMode ? (
+                <motion.div variants={item}>
+                  <label htmlFor="test-recipient" className="form-label flex items-center">
+                    テスト送信用携帯番号 <span className="text-error-500 ml-1">*</span>
+                  </label>
+                  <div className="mt-1">
+                    <PhoneNumberInput
+                      value={testRecipient}
+                      onChange={(value, isIntl, code) => {
+                        setTestRecipient(value);
+                        setIsInternational(isIntl);
+                        setCountryCode(code);
+                      }}
+                      userType={hasPermission('internationalSms') ? 'both' : 'domestic'}
+                      disabled={false}
+                      required
+                    />
+                  </div>
+                </motion.div>
+              ) : (
+                <motion.div variants={item}>
+                  <label htmlFor="recipient" className="form-label">
+                    宛先（電話番号）{isInternational && <span className="ml-2 text-xs text-primary-600">国際送信対応</span>}
+                  </label>
+                  <div className="mt-1">
+                    <PhoneNumberInput
+                      value={recipient}
+                      onChange={handlePhoneNumberChange}
+                      userType={hasPermission('internationalSms') ? (isInternational ? 'international' : 'domestic') : 'domestic'}
+                      disabled={false}
+                      allowInternational={isInternational}
+                    />
+                  </div>
+                </motion.div>
+              )}
+
+              <motion.div variants={item} className="pt-4 flex justify-end">
                 <button
                   type="button"
-                  onClick={() => setIsScheduled(!isScheduled)}
-                  className={`inline-flex items-center text-sm mr-4 ${
-                    isScheduled ? 'text-primary-600' : 'text-grey-500 hover:text-grey-700'
-                  }`}
-                  disabled={isConfirmMode}
+                  onClick={validateAndProceed}
+                  className="btn-primary px-6"
                 >
-                  <Clock className="h-4 w-4 mr-1" />
-                  送信予約
+                  次へ <ChevronRight className="ml-1 h-4 w-4" />
                 </button>
-              </div>
-            </div>
-            
-            {/* Preview box */}
-            {content && (
-              <div className="mt-4 p-4 border border-grey-200 rounded-md bg-grey-50">
-                <p className="text-sm font-medium text-grey-700 mb-2">プレビュー:</p>
-                <p className="text-sm text-grey-800 whitespace-pre-wrap">
-                  {content
-                    .replace(/{info\d+}/g, '【ダミーデータ】')
-                    .replace(/{URL\d*}/g, originalUrl ? 'https://sms.l/abc123' : '{URL}')}
-                </p>
-              </div>
-            )}
-          </motion.div>
+              </motion.div>
+            </>
+          )}
 
-          {/* Template selector dropdown */}
-          {showTemplates && !isConfirmMode && (
-            <motion.div 
-              className="mt-2 border border-grey-200 rounded-md shadow-sm overflow-hidden"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="p-3 bg-grey-50 border-b border-grey-200">
-                <h4 className="font-medium text-grey-900">テンプレート選択</h4>
-              </div>
-              <div className="max-h-60 overflow-y-auto">
-                {isLoadingTemplates ? (
-                  <div className="p-4 text-center text-grey-500">読み込み中...</div>
-                ) : templates.length === 0 ? (
-                  <div className="p-4 text-center text-grey-500">テンプレートがありません</div>
-                ) : (
-                  templates.map((template) => (
-                    <div
-                      key={template.id}
-                      className="p-3 border-b border-grey-200 hover:bg-grey-50 cursor-pointer"
-                      onClick={() => handleTemplateSelect(template)}
+          {/* ステップ2: 本文入力 */}
+          {currentStep === SendStep.CONTENT && (
+            <>
+              <motion.div variants={item}>
+                <div className="flex items-center justify-between">
+                  <label htmlFor="content" className="form-label">
+                    本文 <span className="text-error-500 ml-1">*</span>
+                  </label>
+                  <div className="flex items-center">
+                    <button
+                      type="button"
+                      onClick={() => setShowTemplates(!showTemplates)}
+                      className="inline-flex items-center text-primary-600 hover:text-primary-500 text-sm"
                     >
-                      <p className="font-medium text-grey-900">{template.name}</p>
-                      <p className="text-sm text-grey-500 mt-1 line-clamp-2">{template.content}</p>
+                      <PencilLine className="h-4 w-4 mr-1" />
+                      テンプレートを使用
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-1">
+                  <textarea
+                    id="content"
+                    rows={5}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="メッセージを入力してください。動的タグや短縮URLタグを使用できます。"
+                    className="form-input"
+                  />
+                </div>
+                <div className="mt-2 flex justify-between items-center">
+                  <div className="text-sm text-grey-500 flex items-center">
+                    <span className={characterCount > characterLimit ? 'text-error-600' : ''}>
+                      文字数: {characterCount} / {characterLimit}文字
+                    </span>
+                    {messageCount > 1 && (
+                      <span className="ml-2 px-2 py-0.5 bg-grey-100 rounded-full text-xs">
+                        {messageCount}通分
+                      </span>
+                    )}
+                    {characterCount > characterLimit && (
+                      <span className="text-error-600 ml-2 flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        制限を超えています
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* タグ使用ガイド */}
+                <div className="mt-2 text-sm text-grey-500">
+                  <p>利用可能なタグ: 
+                    <span className="tag-badge-common">お客様の名前を入力</span>
+                    <span className="tag-badge-common">注文番号を入力</span>
+                    <span className="tag-badge-common">予約日時を入力</span>
+                    <span className="tag-badge-url">URL1</span>
+                    <span className="tag-badge-url">URL2</span>
+                    <span className="tag-badge-url">アンケート</span>
+                  </p>
+                </div>
+                
+                {/* 送信内容タグボタン */}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <SurveyTagInput onInsertTag={handleInsertTag} disabled={false} />
+                </div>
+              </motion.div>
+
+              <motion.div variants={item}>
+                <ShortenedUrlInput 
+                  onUpdate={handleOriginalUrlUpdate}
+                  onInsertTag={handleInsertTag}
+                  initialUrl={originalUrl}
+                  showMultipleUrls={multipleUrlsEnabled}
+                  urlIndex={urlTagIndex}
+                  disabled={false}
+                />
+              </motion.div>
+
+              {/* Template selector dropdown */}
+              {showTemplates && (
+                <motion.div 
+                  className="mt-2 border border-grey-200 rounded-md shadow-sm overflow-hidden"
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <div className="p-3 bg-grey-50 border-b border-grey-200">
+                    <h4 className="font-medium text-grey-900">テンプレート選択</h4>
+                  </div>
+                  <div className="max-h-60 overflow-y-auto">
+                    {isLoadingTemplates ? (
+                      <div className="p-4 text-center text-grey-500">読み込み中...</div>
+                    ) : templates.length === 0 ? (
+                      <div className="p-4 text-center text-grey-500">テンプレートがありません</div>
+                    ) : (
+                      templates.map((template) => (
+                        <div
+                          key={template.id}
+                          className="p-3 border-b border-grey-200 hover:bg-grey-50 cursor-pointer"
+                          onClick={() => handleTemplateSelect(template)}
+                        >
+                          <p className="font-medium text-grey-900">{template.name}</p>
+                          <p className="text-sm text-grey-500 mt-1 line-clamp-2">
+                            <TagHighlighter text={template.content} interactive={false} isPreview={true} />
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Preview box */}
+              {content && (
+                <motion.div variants={item} className="mt-4 p-4 border border-grey-200 rounded-md bg-grey-50">
+                  <p className="text-sm font-medium text-grey-700 mb-2">プレビュー:</p>
+                  <div className="text-sm text-grey-800 whitespace-pre-wrap">
+                    <TagHighlighter 
+                      text={content} 
+                      interactive={false}
+                      isPreview={true}
+                      showAsText={true}
+                    />
+                  </div>
+                </motion.div>
+              )}
+
+              <motion.div variants={item} className="pt-4 flex space-x-4 justify-between">
+                <button
+                  type="button"
+                  onClick={goToPreviousStep}
+                  className="btn-secondary px-6"
+                >
+                  戻る
+                </button>
+                <button
+                  type="button"
+                  onClick={validateAndProceed}
+                  className="btn-primary px-6"
+                >
+                  次へ <ChevronRight className="ml-1 h-4 w-4" />
+                </button>
+              </motion.div>
+            </>
+          )}
+
+          {/* ステップ3: オプション設定 */}
+          {currentStep === SendStep.OPTIONS && (
+            <>
+              <motion.div variants={item}>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-md font-medium text-grey-800">送信オプション</h3>
+                </div>
+
+                <div className="bg-grey-50 p-4 rounded-md border border-grey-200">
+                  <div className="flex items-center mb-4">
+                    <label className="inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={isScheduled}
+                        onChange={() => setIsScheduled(!isScheduled)}
+                        className="form-checkbox"
+                      />
+                      <span className="ml-2 flex items-center text-sm font-medium text-grey-700">
+                        <Clock className="h-4 w-4 mr-1" />
+                        送信予約
+                      </span>
+                    </label>
+                    <div className="ml-2 text-sm text-grey-500">
+                      {isScheduled ? '指定した日時にSMSを送信します' : null}
                     </div>
-                  ))
-                )}
-              </div>
-            </motion.div>
+                  </div>
+
+                  {isScheduled && (
+                    <motion.div 
+                      className="flex space-x-4 mt-3"
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <div className="flex-1">
+                        <label htmlFor="scheduled-date" className="form-label">
+                          予約日
+                        </label>
+                        <input
+                          type="date"
+                          id="scheduled-date"
+                          className="form-input"
+                          value={scheduledDate}
+                          onChange={(e) => setScheduledDate(e.target.value)}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <label htmlFor="scheduled-time" className="form-label">
+                          予約時間
+                        </label>
+                        <input
+                          type="time"
+                          id="scheduled-time"
+                          className="form-input"
+                          value={scheduledTime}
+                          onChange={(e) => setScheduledTime(e.target.value)}
+                        />
+                      </div>
+                    </motion.div>
+                  )}
+                </div>
+              </motion.div>
+
+              <motion.div variants={item} className="pt-4 flex space-x-4 justify-between">
+                <button
+                  type="button"
+                  onClick={goToPreviousStep}
+                  className="btn-secondary px-6"
+                >
+                  戻る
+                </button>
+                <button
+                  type="button"
+                  onClick={validateAndProceed}
+                  className="btn-primary px-6"
+                >
+                  確認 <FileCheck className="ml-1 h-4 w-4" />
+                </button>
+              </motion.div>
+            </>
           )}
 
-          {/* Scheduled sending options */}
-          {isScheduled && !isConfirmMode && (
-            <motion.div 
-              className="flex space-x-4"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-            >
-              <div className="flex-1">
-                <label htmlFor="scheduled-date" className="form-label">
-                  予約日
-                </label>
-                <input
-                  type="date"
-                  id="scheduled-date"
-                  className="form-input"
-                  value={scheduledDate}
-                  onChange={(e) => setScheduledDate(e.target.value)}
-                />
-              </div>
-              <div className="flex-1">
-                <label htmlFor="scheduled-time" className="form-label">
-                  予約時間
-                </label>
-                <input
-                  type="time"
-                  id="scheduled-time"
-                  className="form-input"
-                  value={scheduledTime}
-                  onChange={(e) => setScheduledTime(e.target.value)}
-                />
-              </div>
-            </motion.div>
-          )}
-
-          {/* 確認モード表示 */}
-          {isConfirmMode && (
+          {/* ステップ4: 確認画面 */}
+          {currentStep === SendStep.CONFIRM && (
             <motion.div 
               variants={item}
               className="border border-grey-200 rounded-md p-4 bg-grey-50"
@@ -556,18 +764,21 @@ const IndividualSendForm: React.FC = () => {
                   </div>
                   
                   <div>
-                    <p className="text-sm font-medium text-grey-500">送信元</p>
+                    <p className="text-sm font-medium text-grey-500">送信者</p>
                     <p className="text-sm text-grey-900">{senderNumber}</p>
                   </div>
                 </div>
                 
                 <div>
                   <p className="text-sm font-medium text-grey-500">本文</p>
-                  <p className="text-sm text-grey-900 whitespace-pre-wrap p-3 bg-white rounded border border-grey-200">
-                    {content
-                      .replace(/{info\d+}/g, '【ダミーデータ】')
-                      .replace(/{URL\d*}/g, originalUrl ? 'https://sms.l/abc123' : '{URL}')}
-                  </p>
+                  <div className="text-sm text-grey-900 whitespace-pre-wrap p-3 bg-white rounded border border-grey-200">
+                    <TagHighlighter 
+                      text={content} 
+                      interactive={false}
+                      isPreview={true}
+                      showAsText={true}
+                    />
+                  </div>
                 </div>
                 
                 {originalUrl && (
@@ -595,12 +806,8 @@ const IndividualSendForm: React.FC = () => {
                   </div>
                 )}
               </div>
-            </motion.div>
-          )}
 
-          <motion.div variants={item} className="pt-4 flex space-x-4">
-            {isConfirmMode ? (
-              <>
+              <motion.div variants={item} className="pt-4 flex space-x-4 justify-between">
                 <button
                   type="button"
                   onClick={handleBackToEdit}
@@ -629,18 +836,9 @@ const IndividualSendForm: React.FC = () => {
                     </>
                   )}
                 </button>
-              </>
-            ) : (
-              <button
-                type="submit"
-                disabled={isSending || (!recipient && !isTestMode) || !content || (characterCount > characterLimit)}
-                className="btn-primary w-full"
-              >
-                <FileCheck className="mr-2 h-5 w-5" />
-                確認
-              </button>
-            )}
-          </motion.div>
+              </motion.div>
+            </motion.div>
+          )}
         </motion.div>
       </form>
     </motion.div>

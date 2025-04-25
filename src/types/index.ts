@@ -17,6 +17,7 @@ export interface User {
     scheduledSending?: boolean;
     analyticsAccess?: boolean;
     userManagement?: boolean;
+    surveysCreation?: boolean;
     // 他の権限も追加可能
   };
 }
@@ -68,6 +69,8 @@ export interface SMSMessage {
   accessCode4?: string;
   isInternational?: boolean;
   countryCode?: string;
+  price?: number; // 送信料金（円）
+  characterCount?: number; // 文字数
 }
 
 // Template Types
@@ -94,6 +97,9 @@ export interface SenderNumber {
   description?: string;
   isActive: boolean;
   createdAt: string;
+  isInternational?: boolean; // 国際送信対応かどうか
+  isPhoneNumber?: boolean; // 電話番号形式かどうか
+  userId?: string; // 所有ユーザーID（未設定の場合は全ユーザー共通）
 }
 
 // Carrier Types
@@ -161,12 +167,18 @@ export interface CSVJob {
 export interface DashboardStats {
   totalSentToday: number;
   totalSentThisMonth: number;
-  deliveryRateToday: number;
-  failureRateToday: number;
-  pendingJobs: number;
+  activeSending: number; // 現在送信中の数（配信処理が実行中のSMS数）
+  waitingToSend: number; // 送信キュー内のSMS数（まだ送信が開始されていないもの）
+  scheduledMessages: number; // 予約送信のメッセージ数
+  messageSendRate: number; // 現在の送信処理速度（件/分）
+  systemStatus: 'normal' | 'maintenance' | 'degraded' | 'outage'; // システム状態
   recentMessages: SMSMessage[];
   dailySendingTrend: {
     date: string;
+    count: number;
+  }[];
+  hourlySendingData: {
+    hour: number;
     count: number;
   }[];
 }
@@ -199,4 +211,91 @@ export interface ApiResponse<T> {
   data?: T;
   error?: string;
   message?: string;
+}
+
+// アンケート機能の型定義
+export type SurveyStatus = 'active' | 'inactive' | 'draft' | 'expired';
+
+export type QuestionType = 'single' | 'multiple' | 'free';
+
+export type BranchingType = 'independent' | 'branched';
+
+export interface SurveyQuestion {
+  id: string;
+  surveyId: string;
+  questionText: string;
+  questionType: QuestionType;
+  branchingType: BranchingType;
+  parentQuestionId?: string;
+  parentAnswerId?: string;
+  isEnabled: boolean;
+  order: number;
+  options?: SurveyQuestionOption[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SurveyQuestionOption {
+  id: string;
+  questionId: string;
+  optionText: string;
+  order: number;
+}
+
+export interface Survey {
+  id: string;
+  name: string;
+  tagName: string;
+  htmlTitle: string;
+  userId: string;
+  startDateTime: string;
+  endDateTime: string;
+  questionType: QuestionType;
+  branchingType: BranchingType;
+  allowMultipleAnswers: boolean;
+  maxSelections?: number;
+  completionText: string;
+  expirationText: string;
+  status: SurveyStatus;
+  questions: SurveyQuestion[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SurveyResponse {
+  id: string;
+  surveyId: string;
+  recipientPhoneNumber: string;
+  senderPhoneNumber: string;
+  messageId: string;
+  completedAt?: string;
+  createdAt: string;
+  answers: SurveyAnswer[];
+}
+
+export interface SurveyAnswer {
+  id: string;
+  responseId: string;
+  questionId: string;
+  optionId?: string;
+  freeText?: string;
+  answeredAt: string;
+}
+
+export interface SurveyStatistics {
+  totalResponses: number;
+  completionRate: number;
+  averageTimeToComplete: number;
+  questionStats: {
+    questionId: string;
+    questionText: string;
+    totalAnswers: number;
+    optionStats?: {
+      optionId: string;
+      optionText: string;
+      count: number;
+      percentage: number;
+    }[];
+    freeTextAnswers?: string[];
+  }[];
 }

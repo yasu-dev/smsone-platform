@@ -6,7 +6,7 @@ const mockTemplates: Template[] = [
   {
     id: 'template-1',
     name: '注文確認',
-    content: '{info1}様、ご注文ありがとうございます。注文番号{info2}の処理が完了しました。',
+    content: '{お客様の名前を入力}様、ご注文ありがとうございます。注文番号{注文番号を入力}の処理が完了しました。',
     description: '注文確認のための基本テンプレート',
     createdAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
@@ -17,7 +17,7 @@ const mockTemplates: Template[] = [
   {
     id: 'template-2',
     name: '配送通知',
-    content: '{info1}様、注文番号{info2}の商品が発送されました。配送業者:{info3} 追跡番号:{info4}',
+    content: '{お客様の名前を入力}様、注文番号{注文番号を入力}の商品が発送されました。配送業者:{配送業者名を入力} 追跡番号:{追跡番号を入力}',
     description: '配送開始通知用テンプレート',
     createdAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
@@ -28,7 +28,7 @@ const mockTemplates: Template[] = [
   {
     id: 'template-3',
     name: '予約確認',
-    content: '{info1}様、{info2}での予約が確定しました。日時:{info3} {info4}',
+    content: '{お客様の名前を入力}様、{予約サービス名を入力}での予約が確定しました。日時:{予約日時を入力} {予約詳細を入力}',
     description: '予約確認用テンプレート',
     createdAt: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
@@ -39,7 +39,7 @@ const mockTemplates: Template[] = [
   {
     id: 'template-4',
     name: 'リマインダー',
-    content: '{info1}様、{info2}の予約が{info3}に予定されています。ご確認ください。',
+    content: '{お客様の名前を入力}様、{予約内容を入力}の予約が{日時を入力}に予定されています。ご確認ください。',
     description: 'リマインダー用テンプレート',
     createdAt: new Date(Date.now() - 15 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
@@ -50,7 +50,7 @@ const mockTemplates: Template[] = [
   {
     id: 'template-5',
     name: 'キャンペーン通知',
-    content: '{info1}様、期間限定キャンペーンのお知らせです。{info2}が{info3}%OFFになります。コード:{info4}',
+    content: '{お客様の名前を入力}様、期間限定キャンペーンのお知らせです。{商品名を入力}が{割引率を入力}%OFFになります。コード:{クーポンコードを入力}',
     description: 'キャンペーン告知用テンプレート',
     createdAt: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),

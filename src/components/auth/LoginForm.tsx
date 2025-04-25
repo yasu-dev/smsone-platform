@@ -7,7 +7,7 @@ import Logo from '../ui/Logo';
 const LoginForm: React.FC = () => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [rememberMe, setRememberMe] = useState(true);
   const { login, isLoading, error } = useAuthStore();
   const navigate = useNavigate();
 
@@ -16,10 +16,9 @@ const LoginForm: React.FC = () => {
     try {
       await login(username, password);
       
-      // Save to localStorage if remember me is checked
-      if (rememberMe) {
-        localStorage.setItem('auth_token', 'demo_token');
-      }
+      // ログイン情報を常に保存する（Remember meの状態に関わらず）
+      localStorage.setItem('auth_token', 'demo_token');
+      localStorage.setItem('auth_user_id', username === 'admin' ? '1' : '2');
       
       navigate('/');
     } catch (error) {
@@ -140,34 +139,7 @@ const LoginForm: React.FC = () => {
               </button>
             </div>
           </form>
-
-          <div className="mt-6" style={{ display: 'none' }}>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-grey-300" />
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="bg-white px-2 text-grey-500">または</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-3">
-              <button
-                type="button"
-                className="btn-secondary"
-              >
-                <span className="mx-auto">デモアカウントでログイン</span>
-              </button>
-            </div>
-          </div>
         </motion.div>
-
-        <p className="mt-10 text-center text-sm text-grey-500">
-          アカウントをお持ちでない場合は{' '}
-          <a href="#" className="font-medium text-primary-600 hover:text-primary-500">
-            管理者にお問い合わせください
-          </a>
-        </p>
       </div>
     </div>
   );

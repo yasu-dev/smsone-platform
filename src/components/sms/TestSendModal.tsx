@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { X, Send, ShieldCheck, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import useSMSStore from '../../store/smsStore';
+import TagHighlighter from '../ui/TagHighlighter';
 
 interface TestSendModalProps {
   isOpen: boolean;
@@ -107,9 +108,7 @@ const TestSendModal: React.FC<TestSendModalProps> = ({
                 <h3 className="text-sm font-medium text-grey-700">送信内容</h3>
               </div>
               <div className="p-3 bg-grey-50 rounded-md text-sm text-grey-800 whitespace-pre-wrap border border-grey-200">
-                {content
-                  .replace(/{info\d+}/g, '【ダミーデータ】')
-                  .replace(/{URL\d*}/g, originalUrl ? 'https://sms.l/abc123' : '{URL}')}
+                <TagHighlighter text={content} />
               </div>
             </div>
 
