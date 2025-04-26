@@ -17,13 +17,23 @@ const Layout: React.FC = () => {
     setIsMobileMenuOpen(prev => !prev);
   };
 
+  // Navbarからのトグル操作を処理する関数
+  const handleNavbarToggle = () => {
+    // サイドバーの開閉状態を切り替える
+    setIsSidebarCollapsed(prev => !prev);
+  };
+
   return (
     <div className="min-h-screen bg-grey-50">
-      <Navbar onMobileMenuToggle={handleMobileMenuToggle} />
+      <Navbar 
+        onMobileMenuToggle={handleMobileMenuToggle}
+        onSidebarToggle={handleNavbarToggle}
+        isSidebarCollapsed={isSidebarCollapsed}
+      />
       
-      <div className="flex">
+      <div className="flex pt-16">
         {/* Desktop Sidebar */}
-        <div className={`hidden md:block fixed inset-y-16 left-0 border-r border-grey-200 transition-all duration-300 ${
+        <div className={`hidden md:block fixed top-16 bottom-0 left-0 border-r border-grey-200 transition-all duration-300 ${
           isSidebarCollapsed ? 'md:w-16' : 'md:w-64 lg:w-72'
         }`}>
           <Sidebar onToggle={handleSidebarToggle} isCollapsed={isSidebarCollapsed} />
@@ -33,7 +43,7 @@ const Layout: React.FC = () => {
         <AnimatePresence>
           {isMobileMenuOpen && (
             <motion.div 
-              className="md:hidden fixed inset-y-16 left-0 z-20 w-64 border-r border-grey-200 bg-white"
+              className="md:hidden fixed top-16 bottom-0 left-0 z-20 w-64 border-r border-grey-200 bg-white"
               initial={{ x: -320 }}
               animate={{ x: 0 }}
               exit={{ x: -320 }}

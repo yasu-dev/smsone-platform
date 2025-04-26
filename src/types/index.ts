@@ -1,11 +1,26 @@
 // User Types
 export type UserRole = 'admin' | 'user' | 'manager' | 'operator' | 'viewer';
 
+// テナント関連の型を追加
+export interface Tenant {
+  id: string;
+  name: string;
+  domain: string;
+  subdomain?: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  createdAt: string;
+  updatedAt: string;
+  isActive: boolean;
+}
+
 export interface User {
   id: string;
   username: string;
   email: string;
   role: UserRole;
+  tenant_id: string; // テナントIDを追加
   createdAt: string;
   lastLogin?: string;
   isActive: boolean;
@@ -25,6 +40,7 @@ export interface User {
 // Authentication Types
 export interface AuthState {
   user: User | null;
+  tenant: Tenant | null; // テナント情報を追加
   isAuthenticated: boolean;
   isLoading: boolean;
   error: string | null;

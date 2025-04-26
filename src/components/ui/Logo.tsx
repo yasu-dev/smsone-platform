@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useState } from 'react';
+import useAuthStore from '../../store/authStore';
 
 interface LogoProps {
   size?: 'sm' | 'md' | 'lg';
@@ -11,16 +12,81 @@ const Logo: React.FC<LogoProps> = ({
   withText = true,
   className = '' 
 }) => {
+  const { tenant } = useAuthStore();
+  const [imageError, setImageError] = useState(false);
+  
   const textSizeClasses = {
     sm: 'text-sm',
     md: 'text-base',
     lg: 'text-2xl'
   };
 
+  const heightClasses = {
+    sm: 'h-5',
+    md: 'h-8',
+    lg: 'h-10'
+  };
+
+  // テナント名
+  const tenantName = tenant?.name || 'SMSOne';
+  
+  // デフォルトロゴ（logo.svg）
+  const defaultLogoUrl = './logo.svg';
+  
+  // テナントロゴがある場合はそれを使用、ない場合はデフォルトロゴを使用
+  const logoUrl = (tenant?.logoUrl && tenant.logoUrl.trim() !== '' && !imageError) 
+    ? tenant.logoUrl 
+    : defaultLogoUrl;
+
+  // SMSOneの場合は特別なフォントスタイルを適用
+  const isSMSOne = tenantName === 'SMSOne';
+  const fontStyle = isSMSOne 
+    ? { 
+        fontFamily: "'Arial', 'Helvetica', sans-serif",
+        fontWeight: 600,
+        letterSpacing: '-0.02em',
+        color: '#000000' // 黒色を適用
+      } 
+    : {};
+  
+  // logo.svgの場合は非表示にする
+  const isDefaultLogo = logoUrl === defaultLogoUrl;
+
+  // テキストのみ表示する場合
+  if (!withText) {
+    return (
+      <div className={`flex items-center ${className}`}>
+        {!isDefaultLogo && (
+          <img 
+            src={logoUrl} 
+            alt={tenantName} 
+            className={heightClasses[size]}
+            onError={() => setImageError(true)}
+          />
+        )}
+      </div>
+    );
+  }
+  
+  // ロゴとテキストを表示
   return (
     <div className={`flex items-center ${className}`}>
-      <span className={`font-black text-black ${textSizeClasses[size]}`}>
-        SMSOne
+      {!isDefaultLogo && (
+        <img 
+          src={logoUrl} 
+          alt={tenantName} 
+          className={`mr-2 ${heightClasses[size]}`}
+          onError={() => setImageError(true)}
+        />
+      )}
+      <span 
+        className={`font-black ${textSizeClasses[size]}`}
+        style={{
+          ...(tenant?.primaryColor && !isSMSOne ? { color: tenant.primaryColor } : {}),
+          ...fontStyle
+        }}
+      >
+        {tenantName}
       </span>
     </div>
   );

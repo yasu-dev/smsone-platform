@@ -2,9 +2,9 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import useAuthStore from './store/authStore';
 
-// アプリケーションの初期化遅延を少し入れる
-// これにより認証処理が完了する前にUIが表示されることを防ぐ
+// アプリケーションの初期化
 const rootElement = document.getElementById('root');
 
 if (!rootElement) {
@@ -13,9 +13,9 @@ if (!rootElement) {
 
 const root = createRoot(rootElement);
 
-// アプリケーションのレンダリング前にLocalStorageをチェック
-const hasToken = localStorage.getItem('auth_token');
-console.log('認証トークンの存在確認:', !!hasToken);
+// アプリケーションのレンダリング前に認証状態を設定
+const { forceLogin } = useAuthStore.getState();
+forceLogin();
 
 // レンダリング開始
 root.render(

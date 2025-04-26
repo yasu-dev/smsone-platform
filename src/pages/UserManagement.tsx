@@ -157,34 +157,208 @@ const UserManagement: React.FC = () => {
   
   // モックユーザーデータ生成
   const generateMockUsers = (): UserData[] => {
-    const roles: UserRole[] = ['admin', 'manager', 'user', 'operator', 'viewer'];
-    const statuses: Array<'active' | 'inactive' | 'pending'> = ['active', 'inactive', 'pending'];
-    
-    return Array.from({ length: 25 }, (_, i) => {
-      const role = roles[Math.floor(Math.random() * roles.length)];
-      const isAdmin = role === 'admin';
-      const isManager = role === 'manager';
-      
-      return {
-        id: `user-${i + 1}`,
-        username: `ユーザー${i + 1}`,
-        email: `user${i + 1}@example.com`,
-        role,
-        status: statuses[Math.floor(Math.random() * statuses.length)],
-        lastLoginAt: new Date(Date.now() - Math.floor(Math.random() * 30 * 24 * 60 * 60 * 1000)).toISOString(),
-        createdAt: new Date(Date.now() - Math.floor(Math.random() * 365 * 24 * 60 * 60 * 1000)).toISOString(),
+    // 実際の企業ユーザーのデータを返す
+    return [
+      // Topaz合同会社のユーザー
+      {
+        id: 'topaz-1',
+        username: '佐藤太郎',
+        email: 'sato@topaz-sms.com',
+        role: 'admin',
+        status: 'active',
+        lastLoginAt: new Date().toISOString(),
+        createdAt: new Date(Date.now() - 280 * 24 * 60 * 60 * 1000).toISOString(),
         permissions: {
-          internationalSms: isAdmin || isManager || Math.random() > 0.5,
-          templateEditing: isAdmin || isManager || Math.random() > 0.3,
-          bulkSending: isAdmin || isManager || Math.random() > 0.5,
-          apiAccess: isAdmin || Math.random() > 0.7,
-          scheduledSending: isAdmin || isManager || Math.random() > 0.2,
-          analyticsAccess: isAdmin || isManager || Math.random() > 0.5,
-          userManagement: isAdmin,
-          surveysCreation: isAdmin || (isManager && Math.random() > 0.5) // 管理者または一部のマネージャーが有効
+          internationalSms: true,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: true,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: true,
+          surveysCreation: true
         }
-      };
-    });
+      },
+      {
+        id: 'topaz-2',
+        username: '鈴木花子',
+        email: 'suzuki@topaz-sms.com',
+        role: 'manager',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: true,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: true,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: false,
+          surveysCreation: true
+        }
+      },
+      
+      // ヤマダ電機のユーザー
+      {
+        id: 'yamada-1',
+        username: '山田健太',
+        email: 'yamada-k@yamada-denki.jp',
+        role: 'admin',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 120 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: false,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: true,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: true,
+          surveysCreation: true
+        }
+      },
+      {
+        id: 'yamada-2',
+        username: '伊藤直子',
+        email: 'ito-n@yamada-denki.jp',
+        role: 'manager',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 110 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: false,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: false,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: false,
+          surveysCreation: true
+        }
+      },
+      {
+        id: 'yamada-3',
+        username: '中村俊介',
+        email: 'nakamura-s@yamada-denki.jp',
+        role: 'operator',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: false,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: false,
+          scheduledSending: true,
+          analyticsAccess: false,
+          userManagement: false,
+          surveysCreation: false
+        }
+      },
+      
+      // ジンテック社のユーザー
+      {
+        id: 'jintech-1',
+        username: '高橋誠',
+        email: 'takahashi@jintech.co.jp',
+        role: 'admin',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 150 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: true,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: true,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: true,
+          surveysCreation: true
+        }
+      },
+      {
+        id: 'jintech-2',
+        username: '渡辺裕子',
+        email: 'watanabe@jintech.co.jp',
+        role: 'manager',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 145 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: true,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: true,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: false,
+          surveysCreation: true
+        }
+      },
+      
+      // ジンテックのOEMサービス利用企業（大手小売業）
+      {
+        id: 'retail-1',
+        username: '佐々木剛',
+        email: 'sasaki@mega-retail.co.jp',
+        role: 'manager',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: false,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: true,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: true,
+          surveysCreation: true
+        }
+      },
+      {
+        id: 'retail-2',
+        username: '小林恵',
+        email: 'kobayashi@mega-retail.co.jp',
+        role: 'operator',
+        status: 'active',
+        lastLoginAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        createdAt: new Date(Date.now() - 45 * 24 * 60 * 60 * 1000).toISOString(),
+        permissions: {
+          internationalSms: false,
+          templateEditing: true,
+          bulkSending: true,
+          apiAccess: false,
+          scheduledSending: true,
+          analyticsAccess: true,
+          userManagement: false,
+          surveysCreation: false
+        }
+      },
+      
+      // 今後追加予定のユーザー
+      {
+        id: 'new-user',
+        username: '新規ユーザー',
+        email: 'newuser@example.com',
+        role: 'user',
+        status: 'pending',
+        lastLoginAt: '',
+        createdAt: new Date().toISOString(),
+        permissions: {
+          internationalSms: false,
+          templateEditing: false,
+          bulkSending: false,
+          apiAccess: false,
+          scheduledSending: false,
+          analyticsAccess: false,
+          userManagement: false,
+          surveysCreation: false
+        }
+      }
+    ];
   };
   
   // モックアクティビティログ生成
@@ -875,358 +1049,117 @@ const UserManagement: React.FC = () => {
       
       {/* ユーザー詳細表示 */}
       {selectedUser && (
-        <div className="card">
-          <div className="flex justify-between items-center mb-4">
-            <div className="flex items-center">
-              <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 mr-3">
-                <User className="h-5 w-5" />
-              </div>
-              <div>
-                <h2 className="text-xl font-medium text-grey-900">{selectedUser.username}</h2>
-                <p className="text-sm text-grey-500">{selectedUser.email}</p>
-              </div>
-            </div>
-            <div className="space-x-2">
-              <button
-                onClick={() => handleEditUser(selectedUser)}
-                className="btn-secondary"
-              >
-                <Edit className="h-4 w-4 mr-1.5" />
-                編集
-              </button>
-              <button
-                onClick={() => setSelectedUser(null)}
-                className="btn-secondary"
-              >
-                閉じる
-              </button>
-            </div>
-          </div>
-          
-          {/* タブメニュー */}
-          <div className="border-b border-grey-200 mb-6">
-            <nav className="-mb-px flex space-x-8">
-              <button
-                className={`py-2 px-1 ${
-                  selectedTab === 'info'
-                    ? 'border-b-2 border-primary-500 text-primary-600'
-                    : 'border-b-2 border-transparent text-grey-500 hover:text-grey-700 hover:border-grey-300'
-                }`}
-                onClick={() => setSelectedTab('info')}
-              >
-                基本情報
-              </button>
-              <button
-                className={`py-2 px-1 ${
-                  selectedTab === 'activity'
-                    ? 'border-b-2 border-primary-500 text-primary-600'
-                    : 'border-b-2 border-transparent text-grey-500 hover:text-grey-700 hover:border-grey-300'
-                }`}
-                onClick={() => setSelectedTab('activity')}
-              >
-                アクティビティ履歴
-              </button>
-              <button
-                className={`py-2 px-1 ${
-                  selectedTab === 'contract'
-                    ? 'border-b-2 border-primary-500 text-primary-600'
-                    : 'border-b-2 border-transparent text-grey-500 hover:text-grey-700 hover:border-grey-300'
-                }`}
-                onClick={() => setSelectedTab('contract')}
-              >
-                契約情報
-              </button>
-            </nav>
-          </div>
-          
-          {/* タブコンテンツ */}
-          {selectedTab === 'info' && (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* 基本情報 */}
-                <div className="space-y-4">
-                  <h3 className="font-medium text-grey-900 flex items-center">
-                    <User className="h-5 w-5 mr-1.5 text-grey-500" />
-                    基本情報
-                  </h3>
-                  
-                  <div className="rounded-lg border border-grey-200 overflow-hidden">
-                    <div className="px-4 py-3 bg-grey-50">
-                      <p className="text-sm font-medium text-grey-700">アカウント詳細</p>
-                    </div>
-                    <div className="divide-y divide-grey-200">
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">ユーザーID</div>
-                        <div className="col-span-2 text-sm text-grey-900">{selectedUser.id}</div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">ユーザー名</div>
-                        <div className="col-span-2 text-sm text-grey-900">{selectedUser.username}</div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">メールアドレス</div>
-                        <div className="col-span-2 text-sm text-grey-900">{selectedUser.email}</div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">権限</div>
-                        <div className="col-span-2 text-sm text-grey-900 flex items-center">
-                          <Shield className="h-4 w-4 mr-1.5 text-grey-400" />
-                          {roleDisplayNames[selectedUser.role]}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">状態</div>
-                        <div className="col-span-2">
-                          {selectedUser.status === 'active' ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              有効
-                            </span>
-                          ) : selectedUser.status === 'inactive' ? (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              無効
-                            </span>
-                          ) : (
-                            <span className="badge-warning flex items-center w-fit">
-                              <Clock className="h-3 w-3 mr-1" />
-                              保留中
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">登録日時</div>
-                        <div className="col-span-2 text-sm text-grey-900">{formatDate(selectedUser.createdAt)}</div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">最終ログイン</div>
-                        <div className="col-span-2 text-sm text-grey-900">
-                          {selectedUser.lastLoginAt ? formatDate(selectedUser.lastLoginAt) : '未ログイン'}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+        <div className="fixed inset-0 bg-grey-900 bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <motion.div
+            className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="px-6 py-4 border-b border-grey-200 flex items-center justify-between">
+              <div className="flex items-center">
+                <div className="h-10 w-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-600 mr-3">
+                  <User className="h-5 w-5" />
                 </div>
-                
-                {/* 権限情報 */}
-                <div className="space-y-4">
-                  <h3 className="font-medium text-grey-900 flex items-center">
-                    <Shield className="h-5 w-5 mr-1.5 text-grey-500" />
-                    権限設定
-                  </h3>
-                  
-                  <div className="rounded-lg border border-grey-200 overflow-hidden">
-                    <div className="px-4 py-3 bg-grey-50">
-                      <p className="text-sm font-medium text-grey-700">機能権限</p>
-                    </div>
-                    <div className="divide-y divide-grey-200">
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">テンプレート編集</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.templateEditing ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">一括送信</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.bulkSending ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">API利用</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.apiAccess ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">予約送信</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.scheduledSending ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">分析機能</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.analyticsAccess ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                        <div className="text-sm font-medium text-grey-500">ユーザー管理</div>
-                        <div className="col-span-2">
-                          {selectedUser.permissions.userManagement ? (
-                            <span className="badge-success flex items-center w-fit">
-                              <Check className="h-3 w-3 mr-1" />
-                              許可
-                            </span>
-                          ) : (
-                            <span className="badge-error flex items-center w-fit">
-                              <X className="h-3 w-3 mr-1" />
-                              不許可
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      
-                      <div className="flex items-center">
-                        <input
-                          id="surveysCreation"
-                          name="surveysCreation"
-                          type="checkbox"
-                          checked={selectedUser.permissions.surveysCreation}
-                          onChange={handlePermissionChange}
-                          className="form-checkbox"
-                        />
-                        <label htmlFor="surveysCreation" className="ml-2 block text-sm text-grey-700">
-                          アンケート作成
-                        </label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-          
-          {selectedTab === 'activity' && (
-            <>
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-medium text-grey-900 flex items-center">
-                  <Activity className="h-5 w-5 mr-1.5 text-grey-500" />
-                  アクティビティ履歴
-                </h3>
-                <button className="btn-secondary text-sm">
-                  <Download className="h-4 w-4 mr-1.5" />
-                  CSVダウンロード
-                </button>
-              </div>
-              
-              <div className="border rounded-lg overflow-hidden">
-                <table className="min-w-full divide-y divide-grey-200">
-                  <thead className="bg-grey-50">
-                    <tr>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
-                        アクション
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
-                        日時
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
-                        IPアドレス
-                      </th>
-                      <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
-                        詳細
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-grey-200">
-                    {getUserActivityLogs(selectedUser.id).map((log) => (
-                      <tr key={log.id} className="hover:bg-grey-50">
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-grey-900">{log.action}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-grey-500">{formatDate(log.timestamp)}</div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-grey-500">
-                          {log.ipAddress}
-                        </td>
-                        <td className="px-6 py-4 text-sm text-grey-500">
-                          <div className="max-w-lg truncate">{log.details}</div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-              
-              {getUserActivityLogs(selectedUser.id).length === 0 && (
-                <div className="text-center py-8 border border-dashed rounded-md mt-4">
-                  <Activity className="h-12 w-12 text-grey-400 mx-auto" />
-                  <h3 className="mt-2 text-sm font-medium text-grey-900">アクティビティ履歴がありません</h3>
-                </div>
-              )}
-            </>
-          )}
-          
-          {selectedTab === 'contract' && (
-            <>
-              <div className="mb-4">
-                <h3 className="font-medium text-grey-900 flex items-center">
-                  <FileText className="h-5 w-5 mr-1.5 text-grey-500" />
-                  契約情報
-                </h3>
-              </div>
-              
-              {getUserContract(selectedUser.id) ? (
                 <div>
-                  {(() => {
-                    const contract = getUserContract(selectedUser.id)!;
-                    return (
+                  <h2 className="text-xl font-medium text-grey-900">{selectedUser.username}</h2>
+                  <p className="text-sm text-grey-500">{selectedUser.email}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="text-grey-400 hover:text-grey-500"
+                onClick={() => setSelectedUser(null)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            {/* タブメニュー */}
+            <div className="border-b border-grey-200">
+              <nav className="px-6 flex space-x-8">
+                <button
+                  className={`py-3 px-1 ${
+                    selectedTab === 'info'
+                      ? 'border-b-2 border-primary-500 text-primary-600'
+                      : 'border-b-2 border-transparent text-grey-500 hover:text-grey-700 hover:border-grey-300'
+                  }`}
+                  onClick={() => setSelectedTab('info')}
+                >
+                  基本情報
+                </button>
+                <button
+                  className={`py-3 px-1 ${
+                    selectedTab === 'activity'
+                      ? 'border-b-2 border-primary-500 text-primary-600'
+                      : 'border-b-2 border-transparent text-grey-500 hover:text-grey-700 hover:border-grey-300'
+                  }`}
+                  onClick={() => setSelectedTab('activity')}
+                >
+                  アクティビティ履歴
+                </button>
+                <button
+                  className={`py-3 px-1 ${
+                    selectedTab === 'contract'
+                      ? 'border-b-2 border-primary-500 text-primary-600'
+                      : 'border-b-2 border-transparent text-grey-500 hover:text-grey-700 hover:border-grey-300'
+                  }`}
+                  onClick={() => setSelectedTab('contract')}
+                >
+                  契約情報
+                </button>
+              </nav>
+            </div>
+            
+            {/* タブコンテンツ */}
+            <div className="p-6">
+              {selectedTab === 'info' && (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* 基本情報 */}
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-grey-900 flex items-center">
+                        <User className="h-5 w-5 mr-1.5 text-grey-500" />
+                        基本情報
+                      </h3>
+                      
                       <div className="rounded-lg border border-grey-200 overflow-hidden">
                         <div className="px-4 py-3 bg-grey-50">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-grey-700">契約詳細</p>
-                            <div>
-                              {contract.status === 'active' ? (
+                          <p className="text-sm font-medium text-grey-700">アカウント詳細</p>
+                        </div>
+                        <div className="divide-y divide-grey-200">
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">ユーザーID</div>
+                            <div className="col-span-2 text-sm text-grey-900">{selectedUser.id}</div>
+                          </div>
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">ユーザー名</div>
+                            <div className="col-span-2 text-sm text-grey-900">{selectedUser.username}</div>
+                          </div>
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">メールアドレス</div>
+                            <div className="col-span-2 text-sm text-grey-900">{selectedUser.email}</div>
+                          </div>
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">権限</div>
+                            <div className="col-span-2 text-sm text-grey-900 flex items-center">
+                              <Shield className="h-4 w-4 mr-1.5 text-grey-400" />
+                              {roleDisplayNames[selectedUser.role]}
+                            </div>
+                          </div>
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">状態</div>
+                            <div className="col-span-2">
+                              {selectedUser.status === 'active' ? (
                                 <span className="badge-success flex items-center w-fit">
                                   <Check className="h-3 w-3 mr-1" />
                                   有効
                                 </span>
-                              ) : contract.status === 'expired' ? (
+                              ) : selectedUser.status === 'inactive' ? (
                                 <span className="badge-error flex items-center w-fit">
                                   <X className="h-3 w-3 mr-1" />
-                                  期限切れ
+                                  無効
                                 </span>
                               ) : (
                                 <span className="badge-warning flex items-center w-fit">
@@ -1236,49 +1169,249 @@ const UserManagement: React.FC = () => {
                               )}
                             </div>
                           </div>
-                        </div>
-                        <div className="divide-y divide-grey-200">
                           <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                            <div className="text-sm font-medium text-grey-500">契約プラン</div>
-                            <div className="col-span-2 text-sm text-grey-900">{contract.planName}</div>
+                            <div className="text-sm font-medium text-grey-500">登録日時</div>
+                            <div className="col-span-2 text-sm text-grey-900">{formatDate(selectedUser.createdAt)}</div>
                           </div>
                           <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                            <div className="text-sm font-medium text-grey-500">契約開始日</div>
-                            <div className="col-span-2 text-sm text-grey-900">{formatDateOnly(contract.startDate)}</div>
-                          </div>
-                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                            <div className="text-sm font-medium text-grey-500">契約終了日</div>
-                            <div className="col-span-2 text-sm text-grey-900">{formatDateOnly(contract.endDate)}</div>
-                          </div>
-                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                            <div className="text-sm font-medium text-grey-500">月額料金</div>
-                            <div className="col-span-2 text-sm text-grey-900">{formatCurrency(contract.monthlyFee)}</div>
-                          </div>
-                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
-                            <div className="text-sm font-medium text-grey-500">最終更新日</div>
-                            <div className="col-span-2 text-sm text-grey-900">{formatDate(contract.updatedAt)}</div>
+                            <div className="text-sm font-medium text-grey-500">最終ログイン</div>
+                            <div className="col-span-2 text-sm text-grey-900">
+                              {selectedUser.lastLoginAt ? formatDate(selectedUser.lastLoginAt) : '未ログイン'}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    );
-                  })()}
-                  
-                  <div className="mt-4 p-3 border rounded-md bg-primary-50 text-primary-800 flex">
-                    <Info className="h-5 w-5 mr-2 flex-shrink-0 text-primary-500" />
-                    <div className="text-sm">
-                      <p className="font-medium">契約情報の変更について</p>
-                      <p className="mt-1">契約内容の変更は営業担当者にお問い合わせください。</p>
+                    </div>
+                    
+                    {/* 権限情報 */}
+                    <div className="space-y-4">
+                      <h3 className="font-medium text-grey-900 flex items-center">
+                        <Shield className="h-5 w-5 mr-1.5 text-grey-500" />
+                        権限設定
+                      </h3>
+                      
+                      <div className="rounded-lg border border-grey-200 overflow-hidden">
+                        <div className="px-4 py-3 bg-grey-50">
+                          <p className="text-sm font-medium text-grey-700">機能権限</p>
+                        </div>
+                        <div className="divide-y divide-grey-200">
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">テンプレート編集</div>
+                            <div className="col-span-2">
+                              {selectedUser.permissions.templateEditing ? (
+                                <span className="badge-success flex items-center w-fit">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  許可
+                                </span>
+                              ) : (
+                                <span className="badge-error flex items-center w-fit">
+                                  <X className="h-3 w-3 mr-1" />
+                                  不許可
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">一括送信</div>
+                            <div className="col-span-2">
+                              {selectedUser.permissions.bulkSending ? (
+                                <span className="badge-success flex items-center w-fit">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  許可
+                                </span>
+                              ) : (
+                                <span className="badge-error flex items-center w-fit">
+                                  <X className="h-3 w-3 mr-1" />
+                                  不許可
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                            <div className="text-sm font-medium text-grey-500">API利用</div>
+                            <div className="col-span-2">
+                              {selectedUser.permissions.apiAccess ? (
+                                <span className="badge-success flex items-center w-fit">
+                                  <Check className="h-3 w-3 mr-1" />
+                                  許可
+                                </span>
+                              ) : (
+                                <span className="badge-error flex items-center w-fit">
+                                  <X className="h-3 w-3 mr-1" />
+                                  不許可
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="text-center py-8 border border-dashed rounded-md">
-                  <FileText className="h-12 w-12 text-grey-400 mx-auto" />
-                  <h3 className="mt-2 text-sm font-medium text-grey-900">契約情報がありません</h3>
-                </div>
+                </>
               )}
-            </>
-          )}
+            
+              {/* 他のタブのコンテンツはそのまま */}
+              {selectedTab === 'activity' && (
+                <>
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-medium text-grey-900 flex items-center">
+                      <Activity className="h-5 w-5 mr-1.5 text-grey-500" />
+                      アクティビティ履歴
+                    </h3>
+                    <button className="btn-secondary text-sm">
+                      <Download className="h-4 w-4 mr-1.5" />
+                      CSVダウンロード
+                    </button>
+                  </div>
+                  
+                  <div className="border rounded-lg overflow-hidden">
+                    <table className="min-w-full divide-y divide-grey-200">
+                      <thead className="bg-grey-50">
+                        <tr>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                            アクション
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                            日時
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                            IPアドレス
+                          </th>
+                          <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-grey-500 uppercase tracking-wider">
+                            詳細
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-grey-200">
+                        {getUserActivityLogs(selectedUser.id).map((log) => (
+                          <tr key={log.id} className="hover:bg-grey-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-grey-900">{log.action}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-grey-500">{formatDate(log.timestamp)}</div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-grey-500">
+                              {log.ipAddress}
+                            </td>
+                            <td className="px-6 py-4 text-sm text-grey-500">
+                              <div className="max-w-lg truncate">{log.details}</div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {getUserActivityLogs(selectedUser.id).length === 0 && (
+                    <div className="text-center py-8 border border-dashed rounded-md mt-4">
+                      <Activity className="h-12 w-12 text-grey-400 mx-auto" />
+                      <h3 className="mt-2 text-sm font-medium text-grey-900">アクティビティ履歴がありません</h3>
+                    </div>
+                  )}
+                </>
+              )}
+              
+              {selectedTab === 'contract' && (
+                <>
+                  <div className="mb-4">
+                    <h3 className="font-medium text-grey-900 flex items-center">
+                      <FileText className="h-5 w-5 mr-1.5 text-grey-500" />
+                      契約情報
+                    </h3>
+                  </div>
+                  
+                  {getUserContract(selectedUser.id) ? (
+                    <div>
+                      {(() => {
+                        const contract = getUserContract(selectedUser.id)!;
+                        return (
+                          <div className="rounded-lg border border-grey-200 overflow-hidden">
+                            <div className="px-4 py-3 bg-grey-50">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-grey-700">契約詳細</p>
+                                <div>
+                                  {contract.status === 'active' ? (
+                                    <span className="badge-success flex items-center w-fit">
+                                      <Check className="h-3 w-3 mr-1" />
+                                      有効
+                                    </span>
+                                  ) : contract.status === 'expired' ? (
+                                    <span className="badge-error flex items-center w-fit">
+                                      <X className="h-3 w-3 mr-1" />
+                                      期限切れ
+                                    </span>
+                                  ) : (
+                                    <span className="badge-warning flex items-center w-fit">
+                                      <Clock className="h-3 w-3 mr-1" />
+                                      保留中
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="divide-y divide-grey-200">
+                              <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                                <div className="text-sm font-medium text-grey-500">契約プラン</div>
+                                <div className="col-span-2 text-sm text-grey-900">{contract.planName}</div>
+                              </div>
+                              <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                                <div className="text-sm font-medium text-grey-500">契約開始日</div>
+                                <div className="col-span-2 text-sm text-grey-900">{formatDateOnly(contract.startDate)}</div>
+                              </div>
+                              <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                                <div className="text-sm font-medium text-grey-500">契約終了日</div>
+                                <div className="col-span-2 text-sm text-grey-900">{formatDateOnly(contract.endDate)}</div>
+                              </div>
+                              <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                                <div className="text-sm font-medium text-grey-500">月額料金</div>
+                                <div className="col-span-2 text-sm text-grey-900">{formatCurrency(contract.monthlyFee)}</div>
+                              </div>
+                              <div className="px-4 py-3 grid grid-cols-3 gap-1">
+                                <div className="text-sm font-medium text-grey-500">最終更新日</div>
+                                <div className="col-span-2 text-sm text-grey-900">{formatDate(contract.updatedAt)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      
+                      <div className="mt-4 p-3 border rounded-md bg-primary-50 text-primary-800 flex">
+                        <Info className="h-5 w-5 mr-2 flex-shrink-0 text-primary-500" />
+                        <div className="text-sm">
+                          <p className="font-medium">契約情報の変更について</p>
+                          <p className="mt-1">契約内容の変更は営業担当者にお問い合わせください。</p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8 border border-dashed rounded-md">
+                      <FileText className="h-12 w-12 text-grey-400 mx-auto" />
+                      <h3 className="mt-2 text-sm font-medium text-grey-900">契約情報がありません</h3>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            
+            <div className="px-6 py-3 border-t border-grey-200 bg-grey-50 flex justify-end">
+              <button
+                type="button"
+                className="btn-secondary mr-3"
+                onClick={() => setSelectedUser(null)}
+              >
+                閉じる
+              </button>
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => handleEditUser(selectedUser)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                編集
+              </button>
+            </div>
+          </motion.div>
         </div>
       )}
       

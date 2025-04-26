@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { User, Save, AtSign, Key } from 'lucide-react';
+import { User, Save, AtSign, Key, Building } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import toast from 'react-hot-toast';
 
 const Profile: React.FC = () => {
-  const { user, updateUser } = useAuthStore();
+  const { user, tenant, updateUser } = useAuthStore();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     username: user?.username || '',
@@ -73,10 +73,27 @@ const Profile: React.FC = () => {
     return <div className="text-center py-8">ログインしてください</div>;
   }
 
+  // ロール表示名の変換
+  const getRoleDisplayName = (role: string) => {
+    const roleMap: Record<string, string> = {
+      'admin': '管理者',
+      'manager': 'マネージャー',
+      'operator': 'オペレーター',
+      'viewer': '閲覧ユーザー',
+      'user': 'ユーザー'
+    };
+    return roleMap[role] || role;
+  };
+
   return (
     <div className="max-w-4xl mx-auto py-6">
       <div className="flex items-center mb-6">
-        <div className="h-12 w-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 mr-4">
+        <div className="h-12 w-12 rounded-full bg-primary-100 flex items-center justify-center text-primary-700"
+          style={tenant?.primaryColor ? { 
+            backgroundColor: `${tenant.primaryColor}20`, 
+            color: tenant.primaryColor 
+          } : {}}
+        >
           <User className="h-6 w-6" />
         </div>
         <div>
@@ -129,12 +146,20 @@ const Profile: React.FC = () => {
                 <div className="sm:col-span-2 text-sm text-grey-900">{user.email}</div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="text-sm font-medium text-grey-500">テナント</div>
+                <div className="sm:col-span-2 text-sm text-grey-900 flex items-center">
+                  <Building className="h-4 w-4 mr-1.5 text-grey-400" />
+                  <span className="text-primary-600"
+                    style={tenant?.primaryColor ? { color: tenant.primaryColor } : {}}
+                  >
+                    {tenant?.name || '-'}
+                  </span>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="text-sm font-medium text-grey-500">ロール</div>
                 <div className="sm:col-span-2 text-sm text-grey-900">
-                  {user.role === 'admin' ? '管理者' : 
-                   user.role === 'manager' ? 'マネージャー' : 
-                   user.role === 'operator' ? 'オペレーター' : 
-                   user.role === 'viewer' ? '閲覧ユーザー' : 'ユーザー'}
+                  {getRoleDisplayName(user.role)}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -188,19 +213,41 @@ const Profile: React.FC = () => {
                 </div>
               </div>
               
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-2">
+                <div className="text-sm font-medium text-grey-500">テナント</div>
+                <div className="sm:col-span-2 text-sm text-grey-500 flex items-center">
+                  <Building className="h-4 w-4 mr-1.5 text-grey-400" />
+                  <span className="text-primary-600"
+                    style={tenant?.primaryColor ? { color: tenant.primaryColor } : {}}
+                  >
+                    {tenant?.name || '-'}
+                  </span>
+                  <span className="ml-2 text-xs text-grey-400">(変更不可)</span>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 py-2">
+                <div className="text-sm font-medium text-grey-500">ロール</div>
+                <div className="sm:col-span-2 text-sm text-grey-500">
+                  {getRoleDisplayName(user.role)}
+                  <span className="ml-2 text-xs text-grey-400">(変更不可)</span>
+                </div>
+              </div>
+              
               {!showPasswordSection ? (
                 <div>
                   <button
                     type="button"
                     onClick={() => setShowPasswordSection(true)}
                     className="text-primary-600 hover:text-primary-700 text-sm font-medium"
+                    style={tenant?.primaryColor ? { color: tenant.primaryColor } : {}}
                   >
                     パスワードを変更する
                   </button>
                 </div>
               ) : (
-                <div className="space-y-4 pt-2 border-t border-grey-200">
-                  <h3 className="font-medium text-grey-900">パスワード変更</h3>
+                <div className="space-y-4 border-t border-grey-200 pt-4 mt-4">
+                  <h3 className="text-sm font-medium text-grey-900">パスワード変更</h3>
                   
                   <div>
                     <label htmlFor="currentPassword" className="block text-sm font-medium text-grey-700 mb-1">
@@ -237,10 +284,9 @@ const Profile: React.FC = () => {
                         value={formData.newPassword}
                         onChange={handleChange}
                         className="block w-full pl-10 pr-3 py-2 border border-grey-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 text-sm"
-                        placeholder="新しいパスワード"
+                        placeholder="新しいパスワード（8文字以上）"
                       />
                     </div>
-                    <p className="mt-1 text-xs text-grey-500">8文字以上で入力してください</p>
                   </div>
                   
                   <div>
@@ -265,53 +311,21 @@ const Profile: React.FC = () => {
                 </div>
               )}
               
-              <div className="flex justify-end">
+              <div className="pt-4">
                 <button
                   type="submit"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500"
+                  className="btn-primary flex items-center"
                 >
-                  <Save className="mr-1.5 h-4 w-4" />
-                  保存
+                  <Save className="mr-2 h-4 w-4" />
+                  保存する
                 </button>
               </div>
             </form>
           )}
         </div>
       </div>
-
-      <div className="bg-white shadow rounded-lg">
-        <div className="px-6 py-4 border-b border-grey-200">
-          <h2 className="text-lg font-medium text-grey-900">権限設定</h2>
-        </div>
-        <div className="px-6 py-4">
-          <div className="space-y-4">
-            {user.permissions && Object.entries(user.permissions).map(([key, value]) => (
-              <div key={key} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="text-sm font-medium text-grey-500">
-                  {key === 'internationalSms' ? '国際SMS送信' :
-                   key === 'templateEditing' ? 'テンプレート編集' :
-                   key === 'bulkSending' ? '一括送信' :
-                   key === 'apiAccess' ? 'API利用' :
-                   key === 'scheduledSending' ? '予約送信' :
-                   key === 'analyticsAccess' ? '分析機能' :
-                   key === 'userManagement' ? 'ユーザー管理' :
-                   key === 'surveysCreation' ? 'アンケート作成' :
-                   key}
-                </div>
-                <div className="sm:col-span-2">
-                  <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                    value ? 'bg-success-100 text-success-800' : 'bg-grey-100 text-grey-800'
-                  }`}>
-                    {value ? '有効' : '無効'}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
     </div>
   );
 };
 
-export default Profile; 
+export default Profile;

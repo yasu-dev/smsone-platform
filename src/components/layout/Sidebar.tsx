@@ -2,7 +2,7 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { 
   Home, Send, History, FileText, Settings, Users, 
-  BarChart2, FileQuestion, PanelRightOpen, PanelRightClose
+  BarChart2, FileQuestion, Link as LinkIcon
 } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -26,14 +26,6 @@ interface SidebarProps {
 const NavLink: React.FC<NavLinkProps> = ({ to, label, icon, isCollapsed, onClick, isMobile, onToggle }) => {
   const location = useLocation();
   const isActive = location.pathname === to;
-  
-  const handleToggle = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onToggle) {
-      onToggle();
-    }
-  };
   
   return (
     <motion.div
@@ -72,17 +64,6 @@ const NavLink: React.FC<NavLinkProps> = ({ to, label, icon, isCollapsed, onClick
             </motion.span>
           )}
         </AnimatePresence>
-        
-        {to === "/" && !isMobile && !isCollapsed && onToggle && (
-          <motion.button 
-            onClick={handleToggle}
-            className="ml-2 p-1.5 text-grey-500 hover:text-primary-600 hover:bg-grey-100 rounded-md"
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-          >
-            <PanelRightClose className="h-5 w-5" />
-          </motion.button>
-        )}
       </Link>
     </motion.div>
   );
@@ -90,8 +71,11 @@ const NavLink: React.FC<NavLinkProps> = ({ to, label, icon, isCollapsed, onClick
 
 const Sidebar: React.FC<SidebarProps> = ({ onToggle, isCollapsed, isMobile = false }) => {
   const { user } = useAuthStore();
+  const { tenant } = useAuthStore();
   const userRole = user?.role;
   const hasPermission = useAuthStore(state => state.hasPermission);
+  const tenantName = tenant?.name || 'SMSOne';
+  const isSMSOne = tenantName === 'SMSOne';
 
   const toggleSidebar = () => {
     if (onToggle) {
@@ -134,19 +118,6 @@ const Sidebar: React.FC<SidebarProps> = ({ onToggle, isCollapsed, isMobile = fal
           onToggle={onToggle}
         />
         
-        {isCollapsed && !isMobile && (
-          <div className="flex justify-center my-2">
-            <motion.button 
-              onClick={toggleSidebar}
-              className="p-1.5 text-grey-500 hover:text-primary-600 hover:bg-grey-100 rounded-md"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              <PanelRightOpen className="h-5 w-5" />
-            </motion.button>
-          </div>
-        )}
-        
         <NavLink to="/send" label="SMS送信" icon={<Send />} isCollapsed={isCollapsed} onClick={handleLinkClick} />
         <NavLink to="/history" label="送信履歴" icon={<History />} isCollapsed={isCollapsed} onClick={handleLinkClick} />
         <NavLink to="/templates" label="テンプレート" icon={<FileText />} isCollapsed={isCollapsed} onClick={handleLinkClick} />
@@ -154,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onToggle, isCollapsed, isMobile = fal
           <NavLink to="/surveys" label="アンケート" icon={<FileQuestion />} isCollapsed={isCollapsed} onClick={handleLinkClick} />
         )}
         <NavLink to="/analytics" label="分析" icon={<BarChart2 />} isCollapsed={isCollapsed} onClick={handleLinkClick} />
-        {userRole === 'admin' && (
+        {(userRole === 'admin' || userRole === 'manager') && hasPermission('userManagement') && (
           <NavLink to="/users" label="ユーザー管理" icon={<Users />} isCollapsed={isCollapsed} onClick={handleLinkClick} />
         )}
         <NavLink to="/settings" label="設定" icon={<Settings />} isCollapsed={isCollapsed} onClick={handleLinkClick} />

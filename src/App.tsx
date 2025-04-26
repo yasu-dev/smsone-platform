@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
@@ -16,29 +16,12 @@ import SurveyResponse from './pages/SurveyResponse';
 import Profile from './pages/Profile';
 import Login from './pages/Login';
 import ProtectedRoute from './routes/ProtectedRoute';
-import useAuthStore from './store/authStore';
+import PermissionRoute from './routes/PermissionRoute';
+import RoleRoute from './routes/RoleRoute';
 
 function App() {
-  const { checkAuth, forceLogin, isAuthenticated } = useAuthStore();
-
-  // アプリ起動時に認証状態を確認
-  useEffect(() => {
-    console.log('App: 初期化中...');
-    
-    // 初期認証状態をコンソールに出力
-    console.log('初期認証状態:', isAuthenticated);
-    
-    // デモ環境では強制的にログイン状態にする
-    forceLogin();
-    
-    // 念のためcheckAuthも実行
-    checkAuth();
-    
-    console.log('App: 初期化完了');
-  }, [checkAuth, forceLogin, isAuthenticated]);
-
   return (
-    <BrowserRouter>
+    <BrowserRouter basename="/">
       <Routes>
         <Route path="/login" element={<Login />} />
         
@@ -47,20 +30,71 @@ function App() {
         
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
+            {/* 基本ページ - すべてのユーザーがアクセス可能 */}
             <Route path="/" element={<Dashboard />} />
-            <Route path="/send" element={<SendSMS />} />
-            <Route path="/history" element={<MessageHistory />} />
-            <Route path="/templates" element={<Templates />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/users" element={<UserManagement />} />
-            <Route path="/shortener" element={<ShortenerTools />} />
-            <Route path="/analytics" element={<Analytics />} />
             <Route path="/profile" element={<Profile />} />
-            <Route path="/notifications" element={<Dashboard />} />
-            <Route path="/surveys" element={<Surveys />} />
-            <Route path="/surveys/create" element={<SurveyCreate />} />
-            <Route path="/surveys/edit/:id" element={<SurveyCreate />} />
-            <Route path="/surveys/stats/:id" element={<SurveyStats />} />
+            
+            {/* 権限が必要なページ - 特定の機能権限が必要 */}
+            <Route path="/send" element={
+              <PermissionRoute permission="bulkSending">
+                <SendSMS />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/history" element={<MessageHistory />} />
+            
+            <Route path="/templates" element={
+              <PermissionRoute permission="templateEditing">
+                <Templates />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/settings" element={<Settings />} />
+            
+            <Route path="/users" element={
+              <PermissionRoute permission="userManagement">
+                <RoleRoute role={['admin', 'manager']}>
+                  <UserManagement />
+                </RoleRoute>
+              </PermissionRoute>
+            } />
+            
+            <Route path="/shortener" element={
+              <PermissionRoute permission="apiAccess">
+                <ShortenerTools />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/analytics" element={
+              <PermissionRoute permission="analyticsAccess">
+                <Analytics />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/surveys" element={
+              <PermissionRoute permission="surveysCreation">
+                <Surveys />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/surveys/create" element={
+              <PermissionRoute permission="surveysCreation">
+                <SurveyCreate />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/surveys/edit/:id" element={
+              <PermissionRoute permission="surveysCreation">
+                <SurveyCreate />
+              </PermissionRoute>
+            } />
+            
+            <Route path="/surveys/stats/:id" element={
+              <PermissionRoute permission="analyticsAccess">
+                <SurveyStats />
+              </PermissionRoute>
+            } />
+            
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Route>

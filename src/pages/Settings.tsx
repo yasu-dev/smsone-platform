@@ -6,7 +6,8 @@ import {
   CreditCard, 
   MessageSquare, 
   HelpCircle, 
-  Tag
+  Tag,
+  Building
 } from 'lucide-react';
 import useAuthStore from '../store/authStore';
 import SecuritySettings from '../components/settings/SecuritySettings';
@@ -15,6 +16,7 @@ import BillingSettings from '../components/settings/BillingSettings';
 import MessagingSettings from '../components/settings/MessagingSettings';
 import HelpSupport from '../components/settings/HelpSupport';
 import TagSettingsTab from '../components/settings/TagSettingsTab';
+import TenantSettingsTab from '../components/settings/TenantSettingsTab';
 
 // タブの型定義
 type SettingsTab = 
@@ -23,12 +25,16 @@ type SettingsTab =
   | 'billing' 
   | 'messaging' 
   | 'support'
-  | 'tags';
+  | 'tags'
+  | 'tenant';
 
 // 管理者向け設定画面
 const Settings: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<SettingsTab>('tags');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('tenant');
   const { user } = useAuthStore();
+  const isAdmin = user?.role === 'admin';
+  // トパーズ社の管理者かどうか
+  const isTopazAdmin = isAdmin && user?.tenant_id === 'topaz-sms';
 
   // タブを切り替える処理
   const handleTabChange = (tab: SettingsTab) => {
@@ -50,6 +56,8 @@ const Settings: React.FC = () => {
         return <HelpSupport />;
       case 'tags':
         return <TagSettingsTab />;
+      case 'tenant':
+        return <TenantSettingsTab />;
       default:
         return <TagSettingsTab />;
     }
@@ -106,6 +114,22 @@ const Settings: React.FC = () => {
                     タグ管理
                   </button>
                 </li>
+                {/* トパーズ社の管理者のみに表示するテナント設定タブ */}
+                {isTopazAdmin && (
+                  <li>
+                    <button
+                      className={`w-full flex items-center px-3 py-2 text-sm rounded-md ${
+                        activeTab === 'tenant' 
+                          ? 'bg-primary-50 text-primary-700 font-medium' 
+                          : 'text-grey-700 hover:bg-grey-50'
+                      }`}
+                      onClick={() => handleTabChange('tenant')}
+                    >
+                      <Building className="h-5 w-5 mr-3" />
+                      テナント設定
+                    </button>
+                  </li>
+                )}
                 <li>
                   <button
                     className={`w-full flex items-center px-3 py-2 text-sm rounded-md ${
